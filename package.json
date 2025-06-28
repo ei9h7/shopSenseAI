@@ -24,7 +24,8 @@
     "html2canvas": "^1.4.1",
     "react-hot-toast": "^2.4.1",
     "clsx": "^2.0.0",
-    "tailwind-merge": "^2.0.0"
+    "tailwind-merge": "^2.0.0",
+    "@supabase/supabase-js": "^2.38.4"
   },
   "devDependencies": {
     "@types/react": "^18.2.37",

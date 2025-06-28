@@ -1,12 +1,13 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { Moon, Sun } from 'lucide-react'
+import { useBusinessSettings } from '../hooks/useBusinessSettings'
 
 const DoNotDisturbToggle: React.FC = () => {
-  const [isDndEnabled, setIsDndEnabled] = useState(false)
+  const { settings, toggleDnd } = useBusinessSettings()
+  const isDndEnabled = settings?.dnd_enabled || false
 
-  const toggleDnd = () => {
-    setIsDndEnabled(!isDndEnabled)
-    // TODO: Implement actual DND logic with API calls
+  const handleToggle = () => {
+    toggleDnd(!isDndEnabled)
   }
 
   return (
@@ -15,7 +16,7 @@ const DoNotDisturbToggle: React.FC = () => {
         Do Not Disturb
       </span>
       <button
-        onClick={toggleDnd}
+        onClick={handleToggle}
         className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${
           isDndEnabled ? 'bg-primary-600' : 'bg-gray-200'
         }`}
@@ -37,6 +38,11 @@ const DoNotDisturbToggle: React.FC = () => {
       <span className={`text-sm ${isDndEnabled ? 'text-primary-600 font-medium' : 'text-gray-500'}`}>
         {isDndEnabled ? 'ON' : 'OFF'}
       </span>
+      {isDndEnabled && (
+        <span className="text-xs text-gray-500 ml-2">
+          AI will auto-respond to messages
+        </span>
+      )}
     </div>
   )
 }
