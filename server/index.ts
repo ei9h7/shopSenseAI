@@ -16,15 +16,17 @@ app.use(cors({
     : ['http://localhost:5173'],
   credentials: true
 }))
-app.use(express.json())
-app.use(express.urlencoded({ extended: true }))
+app.use(express.json({ limit: '10mb' }))
+app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
-// Health check endpoint
+// Health check endpoint - must respond quickly for Render
 app.get('/health', (req, res) => {
-  res.json({
+  res.status(200).json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    uptime: process.uptime(),
+    memory: process.memoryUsage()
   })
 })
 
@@ -33,6 +35,7 @@ app.get('/', (req, res) => {
   res.json({
     name: 'TorqueSheetGPT Webhook Server',
     version: '1.0.0',
+    status: 'running',
     endpoints: {
       health: '/health',
       webhook: '/api/webhooks/openphone',
@@ -121,8 +124,19 @@ app.use('*', (req, res) => {
   res.status(404).json({ error: 'Endpoint not found' })
 })
 
-// Start server
-app.listen(PORT, () => {
+// Graceful shutdown handling
+process.on('SIGTERM', () => {
+  console.log('🛑 SIGTERM received, shutting down gracefully...')
+  process.exit(0)
+})
+
+process.on('SIGINT', () => {
+  console.log('🛑 SIGINT received, shutting down gracefully...')
+  process.exit(0)
+})
+
+// Start server - bind to 0.0.0.0 for Render
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Webhook server running on port ${PORT}`)
   
   // Show the correct URLs based on environment
@@ -138,6 +152,15 @@ app.listen(PORT, () => {
   if (process.env.NODE_ENV === 'production') {
     console.log(`✅ TorqueSheetGPT webhook server deployed successfully!`)
     console.log(`🔗 Use this webhook URL in OpenPhone: ${baseUrl}/api/webhooks/openphone`)
+  }
+})
+
+// Handle server errors
+server.on('error', (error: any) => {
+  console.error('❌ Server error:', error)
+  if (error.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use`)
+    process.exit(1)
   }
 })
 
