@@ -9,6 +9,8 @@ export interface Message {
   intent?: string
   action?: string
   created_at: string
+  read?: boolean
+  notified?: boolean
 }
 
 export interface BusinessSettings {
@@ -34,4 +36,19 @@ export interface AIResponse {
 export interface OpenAIMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
+}
+
+export interface Quote {
+  id: string
+  customer_name: string
+  customer_phone: string
+  vehicle_info: string
+  description: string
+  labor_hours: number
+  labor_rate: number
+  parts_cost: number
+  total_cost: number
+  status: 'draft' | 'sent' | 'accepted' | 'declined'
+  created_at: string
+  expires_at: string
 }

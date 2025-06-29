@@ -1,5 +1,5 @@
 import React from 'react'
-import { Settings as SettingsIcon, Save, Key, Phone } from 'lucide-react'
+import { Settings as SettingsIcon, Save, Key, Phone, CheckCircle, AlertCircle } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -22,7 +22,7 @@ type SettingsFormData = z.infer<typeof settingsSchema>
 const Settings: React.FC = () => {
   const { settings, updateSettings, isUpdating } = useBusinessSettings()
 
-  const { register, handleSubmit, formState: { errors } } = useForm<SettingsFormData>({
+  const { register, handleSubmit, formState: { errors }, watch } = useForm<SettingsFormData>({
     resolver: zodResolver(settingsSchema),
     defaultValues: {
       business_name: settings?.business_name || 'Pink Chicken Speed Shop',
@@ -35,9 +35,21 @@ const Settings: React.FC = () => {
     }
   })
 
+  const watchedValues = watch()
+
   const onSubmit = (data: SettingsFormData) => {
     updateSettings(data)
   }
+
+  const getApiKeyStatus = (apiKey?: string) => {
+    if (!apiKey || apiKey.length < 10) {
+      return { status: 'missing', color: 'text-red-600', icon: AlertCircle }
+    }
+    return { status: 'configured', color: 'text-green-600', icon: CheckCircle }
+  }
+
+  const openaiStatus = getApiKeyStatus(watchedValues.openai_api_key)
+  const openphoneStatus = getApiKeyStatus(watchedValues.openphone_api_key)
 
   return (
     <div className="space-y-6">
@@ -46,6 +58,38 @@ const Settings: React.FC = () => {
         <p className="mt-1 text-sm text-gray-500">
           Configure your shop details and app preferences
         </p>
+      </div>
+
+      {/* API Status Overview */}
+      <div className="bg-white shadow rounded-lg p-6">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">API Configuration Status</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="flex items-center space-x-3">
+            <openaiStatus.icon className={`h-5 w-5 ${openaiStatus.color}`} />
+            <div>
+              <p className="text-sm font-medium text-gray-900">OpenAI API</p>
+              <p className={`text-xs ${openaiStatus.color}`}>
+                {openaiStatus.status === 'configured' ? 'Configured' : 'Not configured'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-3">
+            <openphoneStatus.icon className={`h-5 w-5 ${openphoneStatus.color}`} />
+            <div>
+              <p className="text-sm font-medium text-gray-900">OpenPhone API</p>
+              <p className={`text-xs ${openphoneStatus.color}`}>
+                {openphoneStatus.status === 'configured' ? 'Configured' : 'Not configured'}
+              </p>
+            </div>
+          </div>
+        </div>
+        {(openaiStatus.status === 'missing' || openphoneStatus.status === 'missing') && (
+          <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+            <p className="text-sm text-yellow-800">
+              <strong>Note:</strong> Some API keys are missing. The app will have limited functionality until all keys are configured.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Webhook Status */}
@@ -174,10 +218,13 @@ const Settings: React.FC = () => {
               <h3 className="text-lg font-medium text-gray-900 mb-4">API Configuration</h3>
               <div className="space-y-4">
                 <div>
-                  <label htmlFor="openai_api_key" className="block text-sm font-medium text-gray-700">
-                    <Key className="inline h-4 w-4 mr-1" />
-                    OpenAI API Key
-                  </label>
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Key className="h-4 w-4 text-gray-500" />
+                    <label htmlFor="openai_api_key" className="block text-sm font-medium text-gray-700">
+                      OpenAI API Key
+                    </label>
+                    <openaiStatus.icon className={`h-4 w-4 ${openaiStatus.color}`} />
+                  </div>
                   <input
                     {...register('openai_api_key')}
                     type="password"
@@ -189,10 +236,13 @@ const Settings: React.FC = () => {
                   </p>
                 </div>
                 <div>
-                  <label htmlFor="openphone_api_key" className="block text-sm font-medium text-gray-700">
-                    <Phone className="inline h-4 w-4 mr-1" />
-                    OpenPhone API Key
-                  </label>
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Phone className="h-4 w-4 text-gray-500" />
+                    <label htmlFor="openphone_api_key" className="block text-sm font-medium text-gray-700">
+                      OpenPhone API Key
+                    </label>
+                    <openphoneStatus.icon className={`h-4 w-4 ${openphoneStatus.color}`} />
+                  </div>
                   <input
                     {...register('openphone_api_key')}
                     type="password"
