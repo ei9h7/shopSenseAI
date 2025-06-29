@@ -20,6 +20,7 @@ export interface BusinessSettings {
   gst_setting: 'parts' | 'labor' | 'both' | 'none'
   openai_api_key?: string
   openphone_api_key?: string
+  dnd_enabled?: boolean
   created_at: string
   updated_at: string
 }
