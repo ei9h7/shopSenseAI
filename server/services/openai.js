@@ -1,10 +1,14 @@
 import axios from 'axios';
+
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
+
 export class OpenAIService {
     apiKey;
+
     constructor(apiKey) {
         this.apiKey = apiKey;
     }
+
     async processMessage(messageBody, businessName = 'Pink Chicken Speed Shop') {
         try {
             const messages = [
@@ -17,47 +21,55 @@ export class OpenAIService {
                     content: `Here is the client message:\n\n"${messageBody}"\n\nYour job is to identify what the client wants, estimate time using basic mechanical repair knowledge, apply $80/hr rate (1 hour minimum, $20 per 15 min extra), and reply with a friendly, useful message.\n\nFormat like this:\n---\nReply: [The message to text back]\nIntent: [e.g. Quote Request, Booking, Emergency]\nAction: [e.g. Send booking link, Ask for more info, Mark for review]\n---`
                 }
             ];
+
             const response = await axios.post(OPENAI_API_URL, {
-                model: 'gpt-4o-mini', // Use cheaper model to reduce costs
+                model: 'gpt-4o', // Changed from gpt-4o-mini to gpt-4o
                 temperature: 0.6,
-                max_tokens: 500, // Limit response length to save costs
+                max_tokens: 500,
                 messages
             }, {
                 headers: {
                     'Authorization': `Bearer ${this.apiKey}`,
                     'Content-Type': 'application/json'
                 },
-                timeout: 30000 // 30 second timeout
+                timeout: 30000
             });
+
             const fullResponse = response.data?.choices?.[0]?.message?.content || '';
             return this.parseAIResponse(fullResponse);
         }
         catch (error) {
             console.error('OpenAI API Error:', error.response?.status, error.response?.data);
+            
             // Handle specific error cases and provide fallback responses
             if (error.response?.status === 429) {
                 console.log('⚠️  Rate limit/No credits - using intelligent fallback');
                 return this.getIntelligentFallback(messageBody);
             }
+            
             if (error.response?.status === 401) {
                 console.log('⚠️  Invalid API key - using fallback response');
                 return this.getIntelligentFallback(messageBody);
             }
+            
             if (error.response?.status >= 400) {
                 console.log('⚠️  API error - using fallback response');
                 return this.getIntelligentFallback(messageBody);
             }
+            
             // Network or other errors
             console.log('⚠️  Network/timeout error - using fallback response');
             return this.getIntelligentFallback(messageBody);
         }
     }
+
     getIntelligentFallback(messageBody) {
         // Intelligent fallback logic when AI is unavailable
         const lowerMessage = messageBody.toLowerCase();
+        
         // Emergency detection
-        if (lowerMessage.includes('emergency') ||
-            lowerMessage.includes('urgent') ||
+        if (lowerMessage.includes('emergency') || 
+            lowerMessage.includes('urgent') || 
             lowerMessage.includes('breakdown') ||
             lowerMessage.includes('stranded') ||
             lowerMessage.includes('accident') ||
@@ -69,9 +81,10 @@ export class OpenAIService {
                 action: "URGENT - Contact customer immediately"
             };
         }
+        
         // Service/maintenance requests
-        if (lowerMessage.includes('oil change') ||
-            lowerMessage.includes('service') ||
+        if (lowerMessage.includes('oil change') || 
+            lowerMessage.includes('service') || 
             lowerMessage.includes('maintenance') ||
             lowerMessage.includes('tune up') ||
             lowerMessage.includes('inspection')) {
@@ -81,9 +94,10 @@ export class OpenAIService {
                 action: "Follow up with service quote"
             };
         }
+        
         // Quote requests
-        if (lowerMessage.includes('quote') ||
-            lowerMessage.includes('price') ||
+        if (lowerMessage.includes('quote') || 
+            lowerMessage.includes('price') || 
             lowerMessage.includes('cost') ||
             lowerMessage.includes('estimate') ||
             lowerMessage.includes('how much')) {
@@ -93,9 +107,10 @@ export class OpenAIService {
                 action: "Prepare detailed quote"
             };
         }
+        
         // Repair/problem descriptions
-        if (lowerMessage.includes('problem') ||
-            lowerMessage.includes('issue') ||
+        if (lowerMessage.includes('problem') || 
+            lowerMessage.includes('issue') || 
             lowerMessage.includes('broken') ||
             lowerMessage.includes('noise') ||
             lowerMessage.includes('leak') ||
@@ -107,9 +122,10 @@ export class OpenAIService {
                 action: "Diagnose issue and provide solution"
             };
         }
+        
         // Booking/appointment requests
-        if (lowerMessage.includes('appointment') ||
-            lowerMessage.includes('schedule') ||
+        if (lowerMessage.includes('appointment') || 
+            lowerMessage.includes('schedule') || 
             lowerMessage.includes('book') ||
             lowerMessage.includes('available') ||
             lowerMessage.includes('when can')) {
@@ -119,6 +135,7 @@ export class OpenAIService {
                 action: "Check schedule and offer appointment times"
             };
         }
+        
         // Default response for any other message
         return {
             reply: "Hi! Thanks for your message. I'm Pink Chicken Speed Shop and I received your inquiry. I'll review it and get back to you personally within the hour. My rate is $80/hr. Thanks for choosing us!",
@@ -126,17 +143,22 @@ export class OpenAIService {
             action: "Review message and provide personalized response"
         };
     }
+
     parseAIResponse(fullResponse) {
         const lines = fullResponse.split('\n');
+        
         // Extract Reply line
         const replyLine = lines.find(line => line.toLowerCase().startsWith('reply:'));
         const reply = replyLine ? replyLine.replace(/^reply:\s*/i, '').trim() : fullResponse;
+        
         // Extract Intent line
         const intentLine = lines.find(line => line.toLowerCase().startsWith('intent:'));
         const intent = intentLine ? intentLine.replace(/^intent:\s*/i, '').trim() : 'General Inquiry';
+        
         // Extract Action line
         const actionLine = lines.find(line => line.toLowerCase().startsWith('action:'));
         const action = actionLine ? actionLine.replace(/^action:\s*/i, '').trim() : 'Reply sent';
+
         return { reply, intent, action };
     }
 }
