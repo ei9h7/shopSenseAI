@@ -1,6 +1,10 @@
 import { OpenAIService } from './openai.js'
 import { OpenPhoneService } from './openphone.js'
 
+/**
+ * Message Interface
+ * Defines the structure of messages processed by the system
+ */
 export interface Message {
   id: string
   phone_number: string
@@ -15,20 +19,48 @@ export interface Message {
   read?: boolean
 }
 
+/**
+ * AI Response Interface
+ * Defines the structure of responses from the AI processing system
+ */
 export interface AIResponse {
   reply: string
   intent: string
   action: string
 }
 
-// Simple in-memory storage for messages (in production, use a database)
+// Simple in-memory storage for messages (in production, consider using a database)
 let messageStore: Message[] = []
 
+/**
+ * MessageProcessor Class
+ * 
+ * The core message processing engine that handles incoming SMS messages,
+ * processes them with AI, and sends appropriate responses. This class provides:
+ * 
+ * - AI-powered message processing with OpenAI GPT-4
+ * - Intelligent fallback system when AI is unavailable
+ * - Emergency message detection and prioritization
+ * - SMS sending via OpenPhone integration
+ * - Message storage and conversation management
+ * - Do Not Disturb mode support
+ * - Comprehensive error handling and logging
+ * 
+ * The processor ensures that customers never go without a response by
+ * implementing multiple fallback layers when the primary AI system fails.
+ */
 export class MessageProcessor {
   private openAI: OpenAIService | null = null
   private openPhone: OpenPhoneService | null = null
   private settings: any = null
 
+  /**
+   * Initializes the message processor with API services
+   * 
+   * This method sets up the OpenAI and OpenPhone services using environment
+   * variables. It gracefully handles missing API keys and provides detailed
+   * logging for troubleshooting.
+   */
   async initialize() {
     try {
       // Server environment - use environment variables
@@ -64,6 +96,20 @@ export class MessageProcessor {
     }
   }
 
+  /**
+   * Processes an incoming SMS message
+   * 
+   * This is the main entry point for message processing. It handles:
+   * - Message storage and logging
+   * - DND (Do Not Disturb) checking
+   * - AI processing with fallback systems
+   * - Emergency detection and prioritization
+   * - Response generation and sending
+   * - Comprehensive error handling
+   * 
+   * @param phoneNumber - The customer's phone number
+   * @param messageBody - The content of the SMS message
+   */
   async processIncomingMessage(phoneNumber: string, messageBody: string): Promise<void> {
     try {
       console.log(`📨 Processing message from ${phoneNumber}: ${messageBody}`)
@@ -193,14 +239,20 @@ export class MessageProcessor {
     }
   }
 
-  // Method to get all messages (for API endpoint)
+  /**
+   * Retrieves all stored messages
+   * Used by the API endpoint to provide message history to the frontend
+   */
   getMessages(): Message[] {
     return [...messageStore].sort((a, b) => 
       new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     )
   }
 
-  // Method to mark message as read
+  /**
+   * Marks a message as read
+   * Updates the message status for conversation management
+   */
   markMessageAsRead(messageId: string): void {
     const messageIndex = messageStore.findIndex(m => m.id === messageId)
     if (messageIndex !== -1) {
@@ -208,7 +260,10 @@ export class MessageProcessor {
     }
   }
 
-  // Method to send a manual reply
+  /**
+   * Sends a manual reply via SMS
+   * Used when staff need to send custom responses to customers
+   */
   async sendManualReply(phoneNumber: string, message: string): Promise<void> {
     if (!this.openPhone) {
       throw new Error('OpenPhone service not initialized')
@@ -232,6 +287,13 @@ export class MessageProcessor {
     console.log('📤 Manual reply sent and stored:', outboundMessage)
   }
 
+  /**
+   * Generates intelligent fallback responses when AI is unavailable
+   * 
+   * This system uses keyword detection to provide appropriate responses
+   * even when the OpenAI API is down, has no credits, or encounters errors.
+   * This ensures customers always receive professional responses.
+   */
   private getEmergencyFallback(messageBody: string): AIResponse {
     // Intelligent fallback logic when AI is unavailable
     const lowerMessage = messageBody.toLowerCase()
@@ -313,6 +375,12 @@ export class MessageProcessor {
     }
   }
 
+  /**
+   * Sends an SMS response to the customer
+   * 
+   * This method handles the actual SMS sending via OpenPhone API
+   * with comprehensive error handling and logging.
+   */
   private async sendResponse(phoneNumber: string, aiResponse: AIResponse, messageId: string): Promise<void> {
     if (!this.openPhone) {
       throw new Error('OpenPhone service not initialized')
@@ -345,6 +413,10 @@ export class MessageProcessor {
     }
   }
 
+  /**
+   * Checks if a message intent indicates an emergency
+   * Used for prioritizing urgent messages and alerts
+   */
   private isEmergency(intent: string): boolean {
     const emergencyKeywords = ['emergency', 'urgent', 'breakdown', 'stranded', 'accident']
     return emergencyKeywords.some(keyword => 
@@ -352,6 +424,11 @@ export class MessageProcessor {
     )
   }
 
+  /**
+   * Checks if Do Not Disturb mode is enabled
+   * When DND is enabled, the system automatically processes and responds to messages
+   * When disabled, messages are stored but no automatic responses are sent
+   */
   private async isDndEnabled(): Promise<boolean> {
     try {
       // Server environment - use environment variable

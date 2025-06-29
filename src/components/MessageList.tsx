@@ -6,12 +6,29 @@ import { useBusinessSettings } from '../hooks/useBusinessSettings'
 import type { Message } from '../types'
 import toast from 'react-hot-toast'
 
+/**
+ * MessageList Component
+ * 
+ * A comprehensive message management interface that displays customer conversations
+ * in a two-panel layout similar to modern messaging apps. Features include:
+ * 
+ * - Conversation list with unread counts and emergency indicators
+ * - Detailed conversation view with message history
+ * - Real-time message status and AI response tracking
+ * - Manual reply capability with SMS integration
+ * - Emergency message highlighting and alerts
+ * - Professional conversation management for business use
+ * 
+ * The component automatically groups messages by phone number and provides
+ * a clean interface for managing customer communications.
+ */
 const MessageList: React.FC = () => {
   const { messages, isLoading, sendMessage, isSending, markAsRead } = useMessages()
   const { settings } = useBusinessSettings()
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null)
   const [replyText, setReplyText] = useState('')
 
+  // Loading state with spinner
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -20,6 +37,7 @@ const MessageList: React.FC = () => {
     )
   }
 
+  // Empty state when no messages exist
   if (messages.length === 0) {
     return (
       <div className="text-center py-12">
@@ -32,6 +50,10 @@ const MessageList: React.FC = () => {
     )
   }
 
+  /**
+   * Determines the appropriate color scheme for message intent badges
+   * Used to visually categorize different types of customer inquiries
+   */
   const getIntentColor = (intent?: string) => {
     if (!intent) return 'bg-gray-100 text-gray-800'
     
@@ -42,6 +64,10 @@ const MessageList: React.FC = () => {
     return 'bg-gray-100 text-gray-800'
   }
 
+  /**
+   * Handles clicking on a message/conversation
+   * Automatically marks inbound messages as read when selected
+   */
   const handleMessageClick = (message: Message) => {
     setSelectedMessage(message)
     if (message.direction === 'inbound' && !message.read) {
@@ -49,6 +75,10 @@ const MessageList: React.FC = () => {
     }
   }
 
+  /**
+   * Sends a manual reply to the selected customer
+   * Integrates with the SMS system to deliver messages via OpenPhone
+   */
   const handleReply = async () => {
     if (!selectedMessage || !replyText.trim()) {
       toast.error('Please enter a message to send')
@@ -68,11 +98,18 @@ const MessageList: React.FC = () => {
     }
   }
 
+  /**
+   * Opens the device's phone dialer with the customer's number
+   * Provides quick access to make voice calls when needed
+   */
   const handleCallCustomer = (phoneNumber: string) => {
-    // Open phone dialer
     window.open(`tel:${phoneNumber}`)
   }
 
+  /**
+   * Handles keyboard shortcuts in the reply textarea
+   * Enter = send message, Shift+Enter = new line
+   */
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -80,7 +117,7 @@ const MessageList: React.FC = () => {
     }
   }
 
-  // Group messages by phone number for conversation view
+  // Group messages by phone number to create conversation threads
   const groupedMessages = messages.reduce((groups, message) => {
     const phone = message.phone_number
     if (!groups[phone]) {
@@ -90,7 +127,7 @@ const MessageList: React.FC = () => {
     return groups
   }, {} as Record<string, Message[]>)
 
-  // Get the latest message for each conversation for the list view
+  // Create conversation summaries for the left panel
   const conversations = Object.entries(groupedMessages).map(([phone, msgs]) => {
     const sortedMsgs = msgs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     const latestMessage = sortedMsgs[0]
@@ -106,12 +143,13 @@ const MessageList: React.FC = () => {
     }
   }).sort((a, b) => new Date(b.latestMessage.timestamp).getTime() - new Date(a.latestMessage.timestamp).getTime())
 
+  // Find the selected conversation for the right panel
   const selectedConversation = selectedMessage ? 
     conversations.find(c => c.phone === selectedMessage.phone_number) : null
 
   return (
     <div className="flex h-96">
-      {/* Conversation List */}
+      {/* Left Panel: Conversation List */}
       <div className="w-1/2 border-r border-gray-200 overflow-y-auto">
         <div className="space-y-2 p-4">
           {conversations.map((conversation) => (
@@ -130,28 +168,34 @@ const MessageList: React.FC = () => {
                     <User className="h-4 w-4" />
                   </div>
                   <div className="flex-1 min-w-0">
+                    {/* Conversation header with phone number and badges */}
                     <div className="flex items-center space-x-2 mb-1">
                       <span className="text-sm font-medium text-gray-900 truncate">
                         {conversation.phone}
                       </span>
+                      {/* Intent badge */}
                       {conversation.latestMessage.intent && (
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getIntentColor(conversation.latestMessage.intent)}`}>
                           {conversation.latestMessage.intent}
                         </span>
                       )}
+                      {/* Emergency indicator */}
                       {conversation.hasEmergency && (
                         <AlertTriangle className="h-3 w-3 text-red-500" />
                       )}
+                      {/* Unread count badge */}
                       {conversation.unreadCount > 0 && (
                         <span className="inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-blue-500 rounded-full">
                           {conversation.unreadCount}
                         </span>
                       )}
                     </div>
+                    {/* Latest message preview */}
                     <p className="text-sm text-gray-700 truncate">
                       {conversation.latestMessage.direction === 'outbound' ? 'You: ' : ''}
                       {conversation.latestMessage.body}
                     </p>
+                    {/* Timestamp */}
                     <p className="text-xs text-gray-500 mt-1">
                       {format(new Date(conversation.latestMessage.timestamp), 'MMM d, h:mm a')}
                     </p>
@@ -163,11 +207,11 @@ const MessageList: React.FC = () => {
         </div>
       </div>
 
-      {/* Conversation Detail */}
+      {/* Right Panel: Conversation Detail */}
       <div className="w-1/2 flex flex-col">
         {selectedConversation ? (
           <>
-            {/* Header */}
+            {/* Conversation Header */}
             <div className="p-4 border-b border-gray-200 bg-gray-50">
               <div className="flex items-center justify-between">
                 <div>
@@ -190,7 +234,7 @@ const MessageList: React.FC = () => {
               </div>
             </div>
 
-            {/* Messages */}
+            {/* Message Thread */}
             <div className="flex-1 p-4 overflow-y-auto space-y-4">
               {selectedConversation.messages.map((message) => (
                 <div
@@ -204,7 +248,9 @@ const MessageList: React.FC = () => {
                   }`}>
                     <div className="flex items-start space-x-2">
                       <div className="flex-1">
+                        {/* Message content */}
                         <p className="text-sm whitespace-pre-wrap">{message.body}</p>
+                        {/* Timestamp */}
                         <p className={`text-xs mt-1 ${
                           message.direction === 'outbound' ? 'text-primary-100' : 'text-gray-500'
                         }`}>
@@ -212,6 +258,7 @@ const MessageList: React.FC = () => {
                         </p>
                       </div>
                     </div>
+                    {/* AI Action indicator for inbound messages */}
                     {message.action && message.direction === 'inbound' && (
                       <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-gray-900">
                         <p className="text-xs">
@@ -260,6 +307,7 @@ const MessageList: React.FC = () => {
             </div>
           </>
         ) : (
+          // Empty state when no conversation is selected
           <div className="flex-1 flex items-center justify-center text-gray-500">
             <div className="text-center">
               <MessageSquare className="mx-auto h-12 w-12 text-gray-400" />

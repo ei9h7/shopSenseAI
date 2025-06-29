@@ -1,6 +1,26 @@
 import { useState, useEffect } from 'react'
-import type { BusinessSettings } from '../types'
+import type { BusinessSettings, ServerSettings } from '../types'
 import toast from 'react-hot-toast'
+
+/**
+ * useBusinessSettings Hook
+ * 
+ * A comprehensive React hook for managing business settings with server synchronization.
+ * This hook provides a seamless interface between local settings and server configuration,
+ * ensuring that API keys and business settings persist across deployments.
+ * 
+ * Key Features:
+ * - Server settings synchronization for persistent API keys
+ * - Local storage for user preferences and business details
+ * - Automatic fallback when server is unavailable
+ * - Real-time settings refresh capability
+ * - DND (Do Not Disturb) toggle with default ON setting
+ * - Masked API key display for security
+ * 
+ * The hook automatically detects when API keys are configured on the server
+ * (via environment variables) and displays them as read-only with masked values.
+ * This prevents users from having to re-enter API keys after deployments.
+ */
 
 // Default settings with DND enabled by default (as per recent changes)
 const defaultSettings: BusinessSettings = {
@@ -21,12 +41,20 @@ export const useBusinessSettings = () => {
   const [settings, setSettings] = useState<BusinessSettings | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isUpdating, setIsUpdating] = useState(false)
-  const [serverSettings, setServerSettings] = useState<any>(null)
+  const [serverSettings, setServerSettings] = useState<ServerSettings | null>(null)
 
   useEffect(() => {
     loadSettings()
   }, [])
 
+  /**
+   * Loads settings from both server and local storage
+   * 
+   * This function first attempts to fetch server configuration (for API keys
+   * and business settings configured via environment variables), then loads
+   * local user preferences from localStorage. The two sources are merged
+   * with server settings taking precedence for API keys.
+   */
   const loadSettings = async () => {
     try {
       // First try to load from server (for persistent API keys)
@@ -35,17 +63,19 @@ export const useBusinessSettings = () => {
         if (response.ok) {
           const serverData = await response.json()
           setServerSettings(serverData)
+          console.log('Server settings loaded:', serverData)
         }
       } catch (error) {
-        console.log('Server settings not available, using local storage')
+        console.log('Server settings not available, using local storage only')
       }
 
-      // Load from localStorage
+      // Load from localStorage for user preferences
       const savedSettings = localStorage.getItem('business-settings')
       if (savedSettings) {
         const localSettings = JSON.parse(savedSettings)
         
         // Merge server settings with local settings
+        // Server API keys take precedence, but local preferences are preserved
         const mergedSettings = {
           ...defaultSettings,
           ...localSettings,
@@ -55,6 +85,7 @@ export const useBusinessSettings = () => {
         
         setSettings(mergedSettings)
       } else {
+        // No local settings found, use defaults
         setSettings(defaultSettings)
       }
     } catch (error) {
@@ -65,6 +96,15 @@ export const useBusinessSettings = () => {
     }
   }
 
+  /**
+   * Updates business settings in local storage
+   * 
+   * This function handles updates to business information, preferences,
+   * and local API key configuration. Server-configured API keys cannot
+   * be overridden locally.
+   * 
+   * @param newSettings - Partial settings object with updates
+   */
   const updateSettings = async (newSettings: Partial<BusinessSettings>) => {
     setIsUpdating(true)
     try {
@@ -85,6 +125,16 @@ export const useBusinessSettings = () => {
     }
   }
 
+  /**
+   * Toggles the Do Not Disturb setting
+   * 
+   * DND controls whether the AI automatically responds to incoming messages.
+   * When enabled (default), the system processes messages with AI and sends
+   * automatic responses. When disabled, messages are stored but no automatic
+   * responses are sent.
+   * 
+   * @param enabled - Whether DND should be enabled
+   */
   const toggleDnd = async (enabled: boolean) => {
     try {
       const updatedSettings = {
@@ -103,8 +153,17 @@ export const useBusinessSettings = () => {
     }
   }
 
+  /**
+   * Refreshes settings from the server
+   * 
+   * This function can be called manually to sync the latest server
+   * configuration, useful when API keys or business settings have
+   * been updated on the server side.
+   */
   const refreshSettings = () => {
+    setIsLoading(true)
     loadSettings()
+    toast.success('Settings refreshed from server')
   }
 
   return {

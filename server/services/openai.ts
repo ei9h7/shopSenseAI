@@ -2,17 +2,42 @@ import axios from 'axios'
 
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions'
 
+/**
+ * OpenAI Message Interface
+ * Defines the structure for messages sent to the OpenAI API
+ */
 export interface OpenAIMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
 }
 
+/**
+ * AI Response Interface
+ * Defines the structure of processed AI responses
+ */
 export interface AIResponse {
   reply: string
   intent: string
   action: string
 }
 
+/**
+ * OpenAIService Class
+ * 
+ * A service class that handles AI-powered message processing using OpenAI's GPT-4 model.
+ * This service provides intelligent customer service responses with the following features:
+ * 
+ * - Professional automotive service communication
+ * - Automatic quote generation with $80/hr labor rate
+ * - Intent classification (Emergency, Quote Request, Booking, etc.)
+ * - Action recommendations for follow-up
+ * - Cost optimization with GPT-4o-mini model
+ * - Intelligent fallback system when API fails
+ * - Comprehensive error handling for production reliability
+ * 
+ * The service is designed specifically for automotive repair shops and includes
+ * business logic for pricing, emergency detection, and professional communication.
+ */
 export class OpenAIService {
   private apiKey: string
 
@@ -20,6 +45,17 @@ export class OpenAIService {
     this.apiKey = apiKey
   }
 
+  /**
+   * Processes a customer message using OpenAI GPT-4
+   * 
+   * This method sends the customer's message to OpenAI with specific prompts
+   * designed for automotive service communication. It includes business logic
+   * for pricing ($80/hr rate), emergency detection, and professional responses.
+   * 
+   * @param messageBody - The customer's SMS message content
+   * @param businessName - The name of the business (default: Pink Chicken Speed Shop)
+   * @returns Promise<AIResponse> - Structured response with reply, intent, and action
+   */
   async processMessage(messageBody: string, businessName: string = 'Pink Chicken Speed Shop'): Promise<AIResponse> {
     try {
       const messages: OpenAIMessage[] = [
@@ -78,6 +114,24 @@ export class OpenAIService {
     }
   }
 
+  /**
+   * Intelligent fallback system when OpenAI API is unavailable
+   * 
+   * This method provides professional responses using keyword detection
+   * when the AI service fails. It ensures customers never go without
+   * a response, maintaining business reputation and customer satisfaction.
+   * 
+   * The fallback system categorizes messages into:
+   * - Emergency situations (immediate response required)
+   * - Service requests (maintenance, oil changes, etc.)
+   * - Quote requests (pricing inquiries)
+   * - Repair issues (diagnostic needs)
+   * - Booking requests (appointment scheduling)
+   * - General inquiries (default professional response)
+   * 
+   * @param messageBody - The customer's message content
+   * @returns AIResponse - Appropriate fallback response based on keywords
+   */
   private getIntelligentFallback(messageBody: string): AIResponse {
     // Intelligent fallback logic when AI is unavailable
     const lowerMessage = messageBody.toLowerCase()
@@ -159,6 +213,16 @@ export class OpenAIService {
     }
   }
 
+  /**
+   * Parses the raw AI response into structured format
+   * 
+   * This method extracts the Reply, Intent, and Action from the AI's
+   * formatted response. It handles cases where the AI doesn't follow
+   * the exact format by providing sensible defaults.
+   * 
+   * @param fullResponse - The raw response from OpenAI
+   * @returns AIResponse - Structured response object
+   */
   private parseAIResponse(fullResponse: string): AIResponse {
     const lines = fullResponse.split('\n')
     

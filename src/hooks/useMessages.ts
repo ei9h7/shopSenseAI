@@ -2,7 +2,24 @@ import { useState, useEffect } from 'react'
 import type { Message } from '../types'
 import toast from 'react-hot-toast'
 
-// Production API base URL (no more localhost)
+/**
+ * useMessages Hook
+ * 
+ * A comprehensive React hook for managing customer messages and SMS communication.
+ * This hook provides real-time message management with the following capabilities:
+ * 
+ * - Automatic message polling from the production API
+ * - SMS sending via OpenPhone integration
+ * - Local storage fallback for offline functionality
+ * - Message status tracking (read/unread)
+ * - Emergency message detection and filtering
+ * - Real-time updates with 5-second polling interval
+ * 
+ * The hook connects directly to the production webhook server at torquegpt.onrender.com
+ * and provides a seamless interface for message management in the frontend.
+ */
+
+// Production API base URL - no more localhost complexity
 const API_BASE_URL = 'https://torquegpt.onrender.com'
 
 export const useMessages = () => {
@@ -14,11 +31,20 @@ export const useMessages = () => {
     loadMessages()
     
     // Set up polling to check for new messages every 5 seconds
+    // This ensures real-time updates when new SMS messages arrive
     const interval = setInterval(loadMessages, 5000)
     
     return () => clearInterval(interval)
   }, [])
 
+  /**
+   * Loads messages from the production API with localStorage fallback
+   * 
+   * This function attempts to fetch messages from the server first,
+   * then falls back to localStorage if the server is unavailable.
+   * This provides offline functionality and ensures the app works
+   * even when the webhook server is temporarily down.
+   */
   const loadMessages = async () => {
     try {
       // Try to load from server first
@@ -37,7 +63,7 @@ export const useMessages = () => {
       }
     } catch (error) {
       console.error('Error loading messages from server, using localStorage:', error)
-      // Fallback to localStorage
+      // Fallback to localStorage on network errors
       const savedMessages = localStorage.getItem('messages')
       if (savedMessages) {
         setMessages(JSON.parse(savedMessages))
@@ -49,6 +75,15 @@ export const useMessages = () => {
     }
   }
 
+  /**
+   * Sends a manual SMS message to a customer
+   * 
+   * This function integrates with the OpenPhone API via the webhook server
+   * to send SMS messages. It includes proper error handling and user feedback.
+   * 
+   * @param phoneNumber - The customer's phone number
+   * @param message - The message content to send
+   */
   const sendMessage = async ({ phoneNumber, message }: { phoneNumber: string; message: string }) => {
     setIsSending(true)
     try {
@@ -62,11 +97,11 @@ export const useMessages = () => {
       })
 
       if (response.ok) {
-        // Refresh messages after sending
+        // Refresh messages after sending to show the new outbound message
         await loadMessages()
         toast.success('Message sent successfully')
       } else {
-        // Fallback: just add to localStorage
+        // Fallback: just add to localStorage for offline functionality
         const newMessage: Message = {
           id: Date.now().toString(),
           phone_number: phoneNumber,
@@ -92,6 +127,14 @@ export const useMessages = () => {
     }
   }
 
+  /**
+   * Marks a message as read
+   * 
+   * Updates both the server and local state to track message read status.
+   * This helps with conversation management and unread count tracking.
+   * 
+   * @param messageId - The ID of the message to mark as read
+   */
   const markAsRead = async (messageId: string) => {
     try {
       // Try to mark as read on server
@@ -102,7 +145,7 @@ export const useMessages = () => {
       console.error('Error marking message as read on server:', error)
     }
 
-    // Update local state regardless
+    // Update local state regardless of server response
     const updatedMessages = messages.map(msg => 
       msg.id === messageId ? { ...msg, read: true } : msg
     )
@@ -110,10 +153,22 @@ export const useMessages = () => {
     localStorage.setItem('messages', JSON.stringify(updatedMessages))
   }
 
+  /**
+   * Gets the count of unread inbound messages
+   * 
+   * Used for displaying notification badges and dashboard statistics.
+   * Only counts inbound messages to avoid counting our own replies.
+   */
   const getUnreadCount = () => {
     return messages.filter(msg => msg.direction === 'inbound' && !msg.read).length
   }
 
+  /**
+   * Filters messages to find emergency communications
+   * 
+   * Emergency messages are identified by their AI-detected intent
+   * and are used for priority alerts and dashboard warnings.
+   */
   const getEmergencyMessages = () => {
     return messages.filter(msg => 
       msg.intent?.toLowerCase().includes('emergency') && 
