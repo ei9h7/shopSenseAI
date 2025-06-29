@@ -8,93 +8,54 @@ This guide covers deploying both the frontend (React app) and backend (webhook s
 - URL: https://clinquant-starship-25fe89.netlify.app
 - Auto-deploys from main branch
 
-## Backend Deployment (Webhook Server)
+## Backend Deployment (✅ COMPLETED)
 
-The webhook server needs to be deployed separately to handle OpenPhone webhooks.
+✅ **Status: Deployed to Render**
+- URL: https://torquegpt.onrender.com
+- Webhook URL: https://torquegpt.onrender.com/api/webhooks/openphone
 
-### Option 1: Railway (Recommended)
+## Next Steps
 
-Railway is perfect for Node.js applications and provides easy deployment.
+### 1. Add Environment Variables to Render
 
-#### Steps:
+Go to your Render dashboard and add these environment variables:
 
-1. **Navigate to server directory:**
-   ```bash
-   cd server
-   ```
+```
+OPENAI_API_KEY=your_openai_api_key_here
+OPENPHONE_API_KEY=your_openphone_api_key_here
+OPENPHONE_PHONE_NUMBER=your_openphone_number_here
+BUSINESS_NAME=Pink Chicken Speed Shop
+LABOR_RATE=80
+DND_ENABLED=false
+NODE_ENV=production
+```
 
-2. **Install Railway CLI:**
-   ```bash
-   npm install -g @railway/cli
-   ```
-
-3. **Login to Railway:**
-   ```bash
-   railway login
-   ```
-
-4. **Initialize and deploy:**
-   ```bash
-   railway init
-   railway up
-   ```
-
-5. **Set environment variables in Railway dashboard:**
-   ```
-   OPENAI_API_KEY=your_openai_api_key_here
-   OPENPHONE_API_KEY=your_openphone_api_key_here
-   OPENPHONE_PHONE_NUMBER=your_openphone_number_here
-   BUSINESS_NAME=Pink Chicken Speed Shop
-   LABOR_RATE=80
-   DND_ENABLED=false
-   NODE_ENV=production
-   ```
-
-6. **Get your webhook URL:**
-   After deployment, you'll get a URL like: `https://your-app.railway.app`
-   Your webhook endpoint will be: `https://your-app.railway.app/api/webhooks/openphone`
-
-### Option 2: Render
-
-1. Connect your GitHub repo to Render
-2. Create a new Web Service
-3. Set root directory to `server`
-4. Build command: `npm install && npm run build`
-5. Start command: `npm start`
-6. Add environment variables in Render dashboard
-
-### Option 3: Heroku
-
-1. Install Heroku CLI
-2. From server directory:
-   ```bash
-   heroku create your-app-name
-   heroku config:set OPENAI_API_KEY=your_key
-   heroku config:set OPENPHONE_API_KEY=your_key
-   heroku config:set OPENPHONE_PHONE_NUMBER=your_number
-   git init
-   git add .
-   git commit -m "Initial commit"
-   heroku git:remote -a your-app-name
-   git push heroku main
-   ```
-
-## Configure OpenPhone Webhook
-
-Once your webhook server is deployed:
+### 2. Configure OpenPhone Webhook
 
 1. Go to your OpenPhone dashboard
 2. Navigate to Settings → Webhooks
-3. Add a new webhook with URL: `https://your-deployed-server.com/api/webhooks/openphone`
+3. Add a new webhook with URL: `https://torquegpt.onrender.com/api/webhooks/openphone`
 4. Select "Message Received" as the trigger event
 5. Save the configuration
 
-## Testing
+### 3. Test Your Setup
 
-1. **Health check:** Visit `https://your-deployed-server.com/health`
+1. **Health check:** Visit https://torquegpt.onrender.com/health
 2. **Send a test SMS** to your OpenPhone number
-3. **Check logs** in your deployment platform
+3. **Check logs** in your Render dashboard
 4. **Verify response** is sent back via SMS
+
+## Testing Commands
+
+```bash
+# Test health endpoint
+curl https://torquegpt.onrender.com/health
+
+# Test webhook endpoint (for debugging)
+curl -X POST https://torquegpt.onrender.com/api/webhooks/openphone \
+  -H "Content-Type: application/json" \
+  -d '{"test": "webhook"}'
+```
 
 ## Environment Variables Summary
 
@@ -107,7 +68,7 @@ VITE_BUSINESS_NAME=Pink Chicken Speed Shop
 VITE_LABOR_RATE=80
 ```
 
-### Backend (Production environment variables)
+### Backend (Production environment variables in Render)
 ```
 OPENAI_API_KEY=your_openai_api_key_here
 OPENPHONE_API_KEY=your_openphone_api_key_here
@@ -116,15 +77,37 @@ BUSINESS_NAME=Pink Chicken Speed Shop
 LABOR_RATE=80
 DND_ENABLED=false
 NODE_ENV=production
-PORT=3001
 ```
 
 ## Architecture
 
 ```
-Customer SMS → OpenPhone → Webhook Server → AI Processing → SMS Response
+Customer SMS → OpenPhone → Webhook Server (Render) → AI Processing → SMS Response
                     ↓
-Frontend App ← Local Storage ← Message Display
+Frontend App (Netlify) ← Local Storage ← Message Display
 ```
 
-The frontend and backend are now completely separate, allowing for independent scaling and deployment.
+## Troubleshooting
+
+### If webhook isn't working:
+1. Check Render logs for errors
+2. Verify environment variables are set
+3. Test health endpoint: https://torquegpt.onrender.com/health
+4. Verify OpenPhone webhook URL is correct
+
+### If AI responses aren't working:
+1. Check OpenAI API key is valid
+2. Check OpenPhone API key is valid
+3. Verify DND_ENABLED is set to "true" for auto-responses
+
+### If messages aren't appearing in frontend:
+1. The frontend uses localStorage for demo purposes
+2. Real integration would sync with the webhook server
+3. For now, messages are processed server-side only
+
+## Success! 🎉
+
+Your TorqueGPT system is now fully deployed:
+- ✅ Frontend: https://clinquant-starship-25fe89.netlify.app
+- ✅ Webhook Server: https://torquegpt.onrender.com
+- ✅ Ready for OpenPhone integration
