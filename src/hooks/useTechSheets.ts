@@ -89,6 +89,103 @@ export const useTechSheets = () => {
   }
 
   /**
+   * Creates a fallback tech sheet when AI generation fails
+   */
+  const createFallbackTechSheet = (jobDescription: string, vehicleInfo?: string, customerName?: string, quoteId?: string): TechSheet => {
+    // Create a basic tech sheet based on common automotive repair patterns
+    const lowerDesc = jobDescription.toLowerCase()
+    
+    let title = jobDescription.substring(0, 50)
+    let estimatedTime = 2
+    let difficulty: 'Easy' | 'Medium' | 'Hard' = 'Medium'
+    let tools = ['Basic hand tools', 'Socket set', 'Wrench set']
+    let parts = ['As specified in job description']
+    let safety = ['Wear safety glasses', 'Use proper lifting techniques', 'Ensure vehicle is secure']
+    let steps = [
+      'Assess the vehicle and confirm the issue',
+      'Gather all required tools and parts',
+      'Follow manufacturer specifications',
+      'Perform the repair work carefully',
+      'Test functionality after completion',
+      'Clean up work area and dispose of waste properly'
+    ]
+    let tips = ['Take photos before disassembly', 'Keep parts organized', 'Refer to service manual']
+
+    // Customize based on job type
+    if (lowerDesc.includes('brake')) {
+      title = `Brake Service - ${vehicleInfo || 'Vehicle'}`
+      estimatedTime = 1.5
+      difficulty = 'Medium'
+      tools = ['Brake tools', 'C-clamp', 'Socket set', 'Torque wrench']
+      parts = ['Brake pads', 'Brake fluid', 'Hardware kit']
+      safety = ['Never work under vehicle without proper support', 'Brake fluid is corrosive', 'Test brakes before driving']
+      steps = [
+        'Lift vehicle and remove wheels',
+        'Inspect brake system components',
+        'Remove old brake pads',
+        'Clean and lubricate caliper slides',
+        'Install new brake pads',
+        'Bleed brake system if needed',
+        'Test brake pedal feel and function'
+      ]
+      tips = ['Always replace pads in pairs', 'Check rotor condition', 'Pump brakes before driving']
+    } else if (lowerDesc.includes('oil')) {
+      title = `Oil Change - ${vehicleInfo || 'Vehicle'}`
+      estimatedTime = 0.5
+      difficulty = 'Easy'
+      tools = ['Oil drain pan', 'Socket wrench', 'Oil filter wrench', 'Funnel']
+      parts = ['Engine oil', 'Oil filter', 'Drain plug gasket']
+      safety = ['Engine may be hot', 'Dispose of oil properly', 'Wear gloves']
+      steps = [
+        'Warm engine to operating temperature',
+        'Lift vehicle and locate drain plug',
+        'Drain old oil completely',
+        'Replace oil filter',
+        'Install new drain plug with gasket',
+        'Lower vehicle and add new oil',
+        'Check oil level and for leaks'
+      ]
+      tips = ['Use correct oil viscosity', 'Reset oil life monitor', 'Keep maintenance records']
+    } else if (lowerDesc.includes('tire') || lowerDesc.includes('wheel')) {
+      title = `Tire/Wheel Service - ${vehicleInfo || 'Vehicle'}`
+      estimatedTime = 1
+      difficulty = 'Easy'
+      tools = ['Tire iron', 'Jack', 'Jack stands', 'Torque wrench']
+      parts = ['Tires', 'Valve stems', 'Wheel weights']
+      safety = ['Never work under vehicle supported only by jack', 'Check tire pressure when cold', 'Inspect for damage']
+      steps = [
+        'Loosen lug nuts while wheel is on ground',
+        'Lift vehicle and secure with jack stands',
+        'Remove wheel completely',
+        'Inspect tire and wheel condition',
+        'Mount new tire if needed',
+        'Balance wheel assembly',
+        'Install wheel and torque to specification'
+      ]
+      tips = ['Rotate tires regularly', 'Check alignment if wear is uneven', 'Keep spare tire inflated']
+    }
+
+    return {
+      id: Date.now().toString(),
+      title,
+      description: jobDescription,
+      vehicle_info: vehicleInfo,
+      customer_name: customerName,
+      estimated_time: estimatedTime,
+      difficulty,
+      tools_required: tools,
+      parts_needed: parts,
+      safety_warnings: safety,
+      step_by_step: steps,
+      tips,
+      created_at: new Date().toISOString(),
+      generated_by: 'manual',
+      source: customerName ? 'booking' : 'manual',
+      quote_id: quoteId
+    }
+  }
+
+  /**
    * Generates a tech sheet using AI based on job description
    * 
    * @param jobDescription - Description of the repair job
@@ -106,8 +203,12 @@ export const useTechSheets = () => {
     const apiKey = getOpenAIKey()
     
     if (!apiKey) {
-      toast.error('OpenAI API key not configured')
-      return null
+      console.log('⚠️ No API key available, creating fallback tech sheet')
+      const fallbackSheet = createFallbackTechSheet(jobDescription, vehicleInfo, customerName, quoteId)
+      const updatedSheets = [fallbackSheet, ...techSheets]
+      saveTechSheets(updatedSheets)
+      toast.success('Tech sheet created (basic template)')
+      return fallbackSheet
     }
 
     setIsGenerating(true)
@@ -120,6 +221,7 @@ export const useTechSheets = () => {
 
       if (apiKey === 'server-configured') {
         // Use server-side API when key is configured on server
+        console.log('🔧 Using server-side API for tech sheet generation...')
         const response = await fetch('https://torquegpt.onrender.com/api/generate-tech-sheet', {
           method: 'POST',
           headers: {
@@ -133,13 +235,17 @@ export const useTechSheets = () => {
         })
 
         if (!response.ok) {
+          const errorText = await response.text()
+          console.error('Server API error:', response.status, errorText)
           throw new Error(`Server API error: ${response.status}`)
         }
 
         const data = await response.json()
         aiResponse = data.content
+        console.log('✅ Server-side tech sheet generation successful')
       } else {
         // Use client-side API when key is configured locally
+        console.log('🔧 Using client-side API for tech sheet generation...')
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -177,11 +283,14 @@ Make the instructions detailed and professional for a working mechanic.`
         })
 
         if (!response.ok) {
-          throw new Error(`OpenAI API error: ${response.status}`)
+          const errorData = await response.json().catch(() => ({}))
+          console.error('OpenAI API error:', response.status, errorData)
+          throw new Error(`OpenAI API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`)
         }
 
         const data = await response.json()
         aiResponse = data.choices[0]?.message?.content || ''
+        console.log('✅ Client-side tech sheet generation successful')
       }
 
       if (!aiResponse) {
@@ -191,22 +300,32 @@ Make the instructions detailed and professional for a working mechanic.`
       // Parse the AI response
       let parsedResponse
       try {
-        parsedResponse = JSON.parse(aiResponse)
-      } catch {
-        // Fallback if AI doesn't return valid JSON
-        parsedResponse = {
-          title: jobDescription.substring(0, 50) + '...',
-          estimated_time: 2,
-          difficulty: 'Medium',
-          tools_required: ['Basic hand tools', 'Socket set'],
-          parts_needed: ['As needed'],
-          safety_warnings: ['Wear safety glasses', 'Use proper lifting techniques'],
-          step_by_step: ['Assess the issue', 'Gather required tools', 'Perform repair', 'Test functionality'],
-          tips: ['Take photos before disassembly', 'Keep parts organized']
-        }
+        // Clean up the response in case it has markdown formatting
+        const cleanResponse = aiResponse.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+        parsedResponse = JSON.parse(cleanResponse)
+      } catch (parseError) {
+        console.warn('Failed to parse AI response as JSON, using fallback:', parseError)
+        console.log('AI Response was:', aiResponse)
+        
+        // Create fallback with AI response as description
+        const fallbackSheet = createFallbackTechSheet(jobDescription, vehicleInfo, customerName, quoteId)
+        const updatedSheets = [fallbackSheet, ...techSheets]
+        saveTechSheets(updatedSheets)
+        toast.success('Tech sheet created (AI response could not be parsed)')
+        return fallbackSheet
       }
 
-      // Create new tech sheet
+      // Validate required fields
+      if (!parsedResponse.title || !parsedResponse.step_by_step) {
+        console.warn('AI response missing required fields, using fallback')
+        const fallbackSheet = createFallbackTechSheet(jobDescription, vehicleInfo, customerName, quoteId)
+        const updatedSheets = [fallbackSheet, ...techSheets]
+        saveTechSheets(updatedSheets)
+        toast.success('Tech sheet created (AI response incomplete)')
+        return fallbackSheet
+      }
+
+      // Create new tech sheet with AI data
       const newTechSheet: TechSheet = {
         id: Date.now().toString(),
         title: parsedResponse.title,
@@ -215,11 +334,11 @@ Make the instructions detailed and professional for a working mechanic.`
         customer_name: customerName,
         estimated_time: parsedResponse.estimated_time || 2,
         difficulty: parsedResponse.difficulty || 'Medium',
-        tools_required: parsedResponse.tools_required || [],
-        parts_needed: parsedResponse.parts_needed || [],
-        safety_warnings: parsedResponse.safety_warnings || [],
-        step_by_step: parsedResponse.step_by_step || [],
-        tips: parsedResponse.tips || [],
+        tools_required: Array.isArray(parsedResponse.tools_required) ? parsedResponse.tools_required : ['Basic hand tools'],
+        parts_needed: Array.isArray(parsedResponse.parts_needed) ? parsedResponse.parts_needed : ['As needed'],
+        safety_warnings: Array.isArray(parsedResponse.safety_warnings) ? parsedResponse.safety_warnings : ['Follow safety procedures'],
+        step_by_step: Array.isArray(parsedResponse.step_by_step) ? parsedResponse.step_by_step : ['Follow standard procedures'],
+        tips: Array.isArray(parsedResponse.tips) ? parsedResponse.tips : ['Refer to service manual'],
         created_at: new Date().toISOString(),
         generated_by: 'ai',
         source: customerName ? 'booking' : 'manual',
@@ -230,12 +349,20 @@ Make the instructions detailed and professional for a working mechanic.`
       const updatedSheets = [newTechSheet, ...techSheets]
       saveTechSheets(updatedSheets)
 
-      console.log('✅ Tech sheet generated:', newTechSheet.title)
+      console.log('✅ Tech sheet generated successfully:', newTechSheet.title)
+      toast.success('AI tech sheet generated successfully!')
       return newTechSheet
     } catch (error) {
-      console.error('Error generating tech sheet:', error)
-      toast.error('Failed to generate tech sheet. Please try again.')
-      return null
+      console.error('Error generating tech sheet with AI:', error)
+      
+      // Create fallback tech sheet instead of failing completely
+      console.log('🔄 Creating fallback tech sheet due to AI error')
+      const fallbackSheet = createFallbackTechSheet(jobDescription, vehicleInfo, customerName, quoteId)
+      const updatedSheets = [fallbackSheet, ...techSheets]
+      saveTechSheets(updatedSheets)
+      
+      toast.error('AI generation failed, created basic tech sheet instead')
+      return fallbackSheet
     } finally {
       setIsGenerating(false)
     }
@@ -295,8 +422,16 @@ Make the instructions detailed and professional for a working mechanic.`
 
   /**
    * Checks if API key is available for tech sheet generation
+   * Returns true even if no API key (fallback sheets available)
    */
   const canGenerateTechSheets = () => {
+    return true // Always return true since we have fallback capability
+  }
+
+  /**
+   * Checks if AI-powered generation is available
+   */
+  const hasAIGeneration = () => {
     return !!(serverSettings?.openai_configured || (settings?.openai_api_key && settings.openai_api_key.length > 10))
   }
 
@@ -310,6 +445,7 @@ Make the instructions detailed and professional for a working mechanic.`
     getTechSheetStats,
     getTechSheetsForQuote,
     canGenerateTechSheets,
+    hasAIGeneration,
     refreshTechSheets: loadTechSheets
   }
 }

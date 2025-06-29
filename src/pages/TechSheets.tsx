@@ -1,25 +1,8 @@
 import React, { useState } from 'react'
-import { ClipboardList, Plus, Download, Eye, Wrench, Clock, AlertTriangle } from 'lucide-react'
+import { ClipboardList, Plus, Download, Eye, Wrench, Clock, AlertTriangle, X, Bot, FileText } from 'lucide-react'
+import { useTechSheets } from '../hooks/useTechSheets'
 import { useBusinessSettings } from '../hooks/useBusinessSettings'
 import toast from 'react-hot-toast'
-
-interface TechSheet {
-  id: string
-  title: string
-  description: string
-  vehicle_info?: string
-  customer_name?: string
-  estimated_time: number
-  difficulty: 'Easy' | 'Medium' | 'Hard'
-  tools_required: string[]
-  parts_needed: string[]
-  safety_warnings: string[]
-  step_by_step: string[]
-  tips: string[]
-  created_at: string
-  generated_by: 'ai' | 'manual'
-  source?: 'booking' | 'manual'
-}
 
 /**
  * TechSheets Component
@@ -29,6 +12,7 @@ interface TechSheet {
  * 
  * - Manual tech sheet generation via AI from job descriptions
  * - Auto-generated sheets from accepted quotes/bookings
+ * - Fallback tech sheets when AI is unavailable
  * - Downloadable PDF format for workshop use
  * - Difficulty ratings and time estimates
  * - Safety warnings and tool requirements
@@ -36,14 +20,17 @@ interface TechSheet {
  * - Professional tips and best practices
  */
 const TechSheets: React.FC = () => {
-  const { settings } = useBusinessSettings()
-  const [techSheets, setTechSheets] = useState<TechSheet[]>(() => {
-    const saved = localStorage.getItem('tech-sheets')
-    return saved ? JSON.parse(saved) : []
-  })
-  const [isGenerating, setIsGenerating] = useState(false)
+  const { 
+    techSheets, 
+    isLoading, 
+    generateTechSheet, 
+    isGenerating, 
+    canGenerateTechSheets, 
+    hasAIGeneration 
+  } = useTechSheets()
+  const { settings, serverSettings } = useBusinessSettings()
   const [showGenerateForm, setShowGenerateForm] = useState(false)
-  const [selectedSheet, setSelectedSheet] = useState<TechSheet | null>(null)
+  const [selectedSheet, setSelectedSheet] = useState<any>(null)
   const [jobDescription, setJobDescription] = useState('')
 
   /**
@@ -52,115 +39,20 @@ const TechSheets: React.FC = () => {
    * This function sends the job description to OpenAI to generate
    * a comprehensive technical repair guide with all necessary details.
    */
-  const generateTechSheet = async () => {
+  const handleGenerateTechSheet = async () => {
     if (!jobDescription.trim()) {
       toast.error('Please enter a job description')
       return
     }
 
-    if (!settings?.openai_api_key) {
-      toast.error('OpenAI API key not configured. Please check settings.')
-      return
-    }
-
-    setIsGenerating(true)
     try {
-      // Call OpenAI API to generate tech sheet
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${settings.openai_api_key}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          temperature: 0.7,
-          max_tokens: 1500,
-          messages: [
-            {
-              role: 'system',
-              content: `You are an expert automotive technician creating detailed repair guides. Generate a comprehensive tech sheet for the given job description. Format your response as JSON with these exact fields:
-
-{
-  "title": "Brief descriptive title",
-  "estimated_time": number (hours as decimal),
-  "difficulty": "Easy|Medium|Hard",
-  "tools_required": ["tool1", "tool2"],
-  "parts_needed": ["part1", "part2"],
-  "safety_warnings": ["warning1", "warning2"],
-  "step_by_step": ["step1", "step2", "step3"],
-  "tips": ["tip1", "tip2"]
-}`
-            },
-            {
-              role: 'user',
-              content: `Generate a detailed tech sheet for this automotive repair job: ${jobDescription}`
-            }
-          ]
-        })
-      })
-
-      if (!response.ok) {
-        throw new Error(`OpenAI API error: ${response.status}`)
+      const result = await generateTechSheet(jobDescription.trim())
+      if (result) {
+        setJobDescription('')
+        setShowGenerateForm(false)
       }
-
-      const data = await response.json()
-      const aiResponse = data.choices[0]?.message?.content
-
-      if (!aiResponse) {
-        throw new Error('No response from AI')
-      }
-
-      // Parse the AI response
-      let parsedResponse
-      try {
-        parsedResponse = JSON.parse(aiResponse)
-      } catch {
-        // Fallback if AI doesn't return valid JSON
-        parsedResponse = {
-          title: jobDescription.substring(0, 50) + '...',
-          estimated_time: 2,
-          difficulty: 'Medium',
-          tools_required: ['Basic hand tools', 'Socket set'],
-          parts_needed: ['As needed'],
-          safety_warnings: ['Wear safety glasses', 'Use proper lifting techniques'],
-          step_by_step: ['Assess the issue', 'Gather required tools', 'Perform repair', 'Test functionality'],
-          tips: ['Take photos before disassembly', 'Keep parts organized']
-        }
-      }
-
-      // Create new tech sheet
-      const newTechSheet: TechSheet = {
-        id: Date.now().toString(),
-        title: parsedResponse.title,
-        description: jobDescription,
-        estimated_time: parsedResponse.estimated_time || 2,
-        difficulty: parsedResponse.difficulty || 'Medium',
-        tools_required: parsedResponse.tools_required || [],
-        parts_needed: parsedResponse.parts_needed || [],
-        safety_warnings: parsedResponse.safety_warnings || [],
-        step_by_step: parsedResponse.step_by_step || [],
-        tips: parsedResponse.tips || [],
-        created_at: new Date().toISOString(),
-        generated_by: 'ai',
-        source: 'manual'
-      }
-
-      // Save to state and localStorage
-      const updatedSheets = [newTechSheet, ...techSheets]
-      setTechSheets(updatedSheets)
-      localStorage.setItem('tech-sheets', JSON.stringify(updatedSheets))
-
-      // Reset form
-      setJobDescription('')
-      setShowGenerateForm(false)
-      
-      toast.success('Tech sheet generated successfully!')
     } catch (error) {
-      console.error('Error generating tech sheet:', error)
-      toast.error('Failed to generate tech sheet. Please try again.')
-    } finally {
-      setIsGenerating(false)
+      console.error('Error in handleGenerateTechSheet:', error)
     }
   }
 
@@ -168,30 +60,31 @@ const TechSheets: React.FC = () => {
    * Downloads a tech sheet as a formatted text file
    * In a production environment, this could generate a PDF
    */
-  const downloadTechSheet = (sheet: TechSheet) => {
+  const downloadTechSheet = (sheet: any) => {
     const content = `
 TECH SHEET: ${sheet.title}
 Generated: ${new Date(sheet.created_at).toLocaleDateString()}
 Estimated Time: ${sheet.estimated_time} hours
 Difficulty: ${sheet.difficulty}
+Generated by: ${sheet.generated_by === 'ai' ? 'AI Assistant' : 'Manual Template'}
 
 DESCRIPTION:
 ${sheet.description}
 
 TOOLS REQUIRED:
-${sheet.tools_required.map(tool => `• ${tool}`).join('\n')}
+${sheet.tools_required.map((tool: string) => `• ${tool}`).join('\n')}
 
 PARTS NEEDED:
-${sheet.parts_needed.map(part => `• ${part}`).join('\n')}
+${sheet.parts_needed.map((part: string) => `• ${part}`).join('\n')}
 
 SAFETY WARNINGS:
-${sheet.safety_warnings.map(warning => `⚠️ ${warning}`).join('\n')}
+${sheet.safety_warnings.map((warning: string) => `⚠️ ${warning}`).join('\n')}
 
 STEP-BY-STEP INSTRUCTIONS:
-${sheet.step_by_step.map((step, index) => `${index + 1}. ${step}`).join('\n')}
+${sheet.step_by_step.map((step: string, index: number) => `${index + 1}. ${step}`).join('\n')}
 
 TIPS & BEST PRACTICES:
-${sheet.tips.map(tip => `💡 ${tip}`).join('\n')}
+${sheet.tips.map((tip: string) => `💡 ${tip}`).join('\n')}
 
 ---
 Generated by TorqueSheetGPT
@@ -220,6 +113,14 @@ Built with Bolt.new
     }
   }
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -238,12 +139,65 @@ Built with Bolt.new
         </button>
       </div>
 
+      {/* AI Status Notice */}
+      {!hasAIGeneration() && (
+        <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <FileText className="h-5 w-5 text-blue-400" />
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-blue-800">
+                Basic Tech Sheet Generation Available
+              </h3>
+              <div className="mt-2 text-sm text-blue-700">
+                <p>
+                  Tech sheets will be created using professional templates. 
+                  Configure OpenAI API key in Settings for AI-powered generation with detailed instructions.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {hasAIGeneration() && (
+        <div className="bg-green-50 border border-green-200 rounded-md p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <Bot className="h-5 w-5 text-green-400" />
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-green-800">
+                AI-Powered Tech Sheet Generation Enabled
+              </h3>
+              <div className="mt-2 text-sm text-green-700">
+                <p>
+                  Tech sheets will be generated using AI with detailed, job-specific instructions and professional guidance.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Generate Form Modal */}
       {showGenerateForm && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
           <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
             <div className="mt-3">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Generate Tech Sheet</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Generate Tech Sheet</h3>
+                <button
+                  onClick={() => {
+                    setShowGenerateForm(false)
+                    setJobDescription('')
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -261,13 +215,22 @@ Built with Bolt.new
                   </p>
                 </div>
                 
-                {!settings?.openai_api_key && (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
-                    <p className="text-sm text-yellow-800">
-                      <strong>Note:</strong> OpenAI API key not configured. Please set up your API key in Settings to generate tech sheets.
+                {/* AI Status in Modal */}
+                <div className={`p-3 rounded-md ${hasAIGeneration() ? 'bg-green-50 border border-green-200' : 'bg-blue-50 border border-blue-200'}`}>
+                  <div className="flex items-center">
+                    {hasAIGeneration() ? (
+                      <Bot className="h-4 w-4 text-green-600 mr-2" />
+                    ) : (
+                      <FileText className="h-4 w-4 text-blue-600 mr-2" />
+                    )}
+                    <p className={`text-sm ${hasAIGeneration() ? 'text-green-800' : 'text-blue-800'}`}>
+                      {hasAIGeneration() 
+                        ? 'AI will generate detailed, job-specific instructions'
+                        : 'Professional template will be used (configure OpenAI for AI generation)'
+                      }
                     </p>
                   </div>
-                )}
+                </div>
               </div>
               
               <div className="flex justify-end space-x-2 mt-6">
@@ -281,8 +244,8 @@ Built with Bolt.new
                   Cancel
                 </button>
                 <button
-                  onClick={generateTechSheet}
-                  disabled={!jobDescription.trim() || isGenerating || !settings?.openai_api_key}
+                  onClick={handleGenerateTechSheet}
+                  disabled={!jobDescription.trim() || isGenerating}
                   className="px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isGenerating ? (
@@ -329,6 +292,17 @@ Built with Bolt.new
                           <Clock className="h-3 w-3 mr-1" />
                           {sheet.estimated_time}h
                         </span>
+                        {sheet.generated_by === 'ai' ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                            <Bot className="h-3 w-3 mr-1" />
+                            AI Generated
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                            <FileText className="h-3 w-3 mr-1" />
+                            Template
+                          </span>
+                        )}
                       </div>
                       <p className="text-sm text-gray-600 mb-2">{sheet.description}</p>
                       <div className="flex items-center space-x-4 text-sm text-gray-500">
@@ -394,7 +368,7 @@ Built with Bolt.new
                   <div>
                     <h4 className="font-medium text-gray-900 mb-2">Tools Required</h4>
                     <ul className="text-sm text-gray-700 space-y-1">
-                      {selectedSheet.tools_required.map((tool, index) => (
+                      {selectedSheet.tools_required.map((tool: string, index: number) => (
                         <li key={index} className="flex items-center">
                           <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
                           {tool}
@@ -406,7 +380,7 @@ Built with Bolt.new
                   <div>
                     <h4 className="font-medium text-gray-900 mb-2">Parts Needed</h4>
                     <ul className="text-sm text-gray-700 space-y-1">
-                      {selectedSheet.parts_needed.map((part, index) => (
+                      {selectedSheet.parts_needed.map((part: string, index: number) => (
                         <li key={index} className="flex items-center">
                           <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
                           {part}
@@ -422,7 +396,7 @@ Built with Bolt.new
                         Safety Warnings
                       </h4>
                       <ul className="text-sm text-amber-700 space-y-1">
-                        {selectedSheet.safety_warnings.map((warning, index) => (
+                        {selectedSheet.safety_warnings.map((warning: string, index: number) => (
                           <li key={index} className="flex items-start">
                             <span className="text-amber-500 mr-2">⚠️</span>
                             {warning}
@@ -438,7 +412,7 @@ Built with Bolt.new
                   <div>
                     <h4 className="font-medium text-gray-900 mb-2">Step-by-Step Instructions</h4>
                     <ol className="text-sm text-gray-700 space-y-2">
-                      {selectedSheet.step_by_step.map((step, index) => (
+                      {selectedSheet.step_by_step.map((step: string, index: number) => (
                         <li key={index} className="flex items-start">
                           <span className="inline-flex items-center justify-center w-6 h-6 bg-primary-100 text-primary-600 rounded-full text-xs font-medium mr-3 mt-0.5 flex-shrink-0">
                             {index + 1}
@@ -453,7 +427,7 @@ Built with Bolt.new
                     <div>
                       <h4 className="font-medium text-gray-900 mb-2">Tips & Best Practices</h4>
                       <ul className="text-sm text-gray-700 space-y-1">
-                        {selectedSheet.tips.map((tip, index) => (
+                        {selectedSheet.tips.map((tip: string, index: number) => (
                           <li key={index} className="flex items-start">
                             <span className="text-blue-500 mr-2">💡</span>
                             {tip}
@@ -475,8 +449,24 @@ Built with Bolt.new
                           {selectedSheet.difficulty}
                         </span>
                       </div>
+                      <div className="flex justify-between items-center mb-1">
+                        <span>Generated by:</span>
+                        <span className="flex items-center">
+                          {selectedSheet.generated_by === 'ai' ? (
+                            <>
+                              <Bot className="h-3 w-3 mr-1 text-purple-600" />
+                              AI Assistant
+                            </>
+                          ) : (
+                            <>
+                              <FileText className="h-3 w-3 mr-1 text-gray-600" />
+                              Template
+                            </>
+                          )}
+                        </span>
+                      </div>
                       <div className="flex justify-between items-center">
-                        <span>Generated:</span>
+                        <span>Created:</span>
                         <span>{new Date(selectedSheet.created_at).toLocaleDateString()}</span>
                       </div>
                     </div>
