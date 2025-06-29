@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useBusinessSettings } from '../hooks/useBusinessSettings'
+import WebhookStatus from '../components/WebhookStatus'
 import type { BusinessSettings } from '../types'
 
 const settingsSchema = z.object({
@@ -46,6 +47,9 @@ const Settings: React.FC = () => {
           Configure your shop details and app preferences
         </p>
       </div>
+
+      {/* Webhook Status */}
+      <WebhookStatus />
 
       <div className="bg-white shadow rounded-lg">
         <div className="px-4 py-5 sm:p-6">
