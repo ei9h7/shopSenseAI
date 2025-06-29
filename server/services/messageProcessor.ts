@@ -12,6 +12,7 @@ export interface Message {
   intent?: string
   action?: string
   created_at: string
+  read?: boolean
 }
 
 export interface AIResponse {
@@ -19,6 +20,9 @@ export interface AIResponse {
   intent: string
   action: string
 }
+
+// Simple in-memory storage for messages (in production, use a database)
+let messageStore: Message[] = []
 
 export class MessageProcessor {
   private openAI: OpenAIService | null = null
@@ -72,11 +76,14 @@ export class MessageProcessor {
         direction: 'inbound',
         timestamp: new Date().toISOString(),
         processed: false,
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
+        read: false
       }
 
-      // Log message received
+      // Store message in memory (and log it)
+      messageStore.unshift(message)
       console.log('📝 Message stored:', message)
+      console.log(`📊 Total messages in store: ${messageStore.length}`)
 
       // Check if Do Not Disturb is enabled
       const isDndEnabled = await this.isDndEnabled()
@@ -112,9 +119,36 @@ export class MessageProcessor {
           aiResponse = this.getEmergencyFallback(messageBody)
         }
 
+        // Update the stored message with AI response data
+        const messageIndex = messageStore.findIndex(m => m.id === message.id)
+        if (messageIndex !== -1) {
+          messageStore[messageIndex] = {
+            ...messageStore[messageIndex],
+            ai_response: aiResponse.reply,
+            intent: aiResponse.intent,
+            action: aiResponse.action,
+            processed: true
+          }
+        }
+
         // Always try to send a response
         try {
           await this.sendResponse(phoneNumber, aiResponse, message.id)
+          
+          // Create outbound message record
+          const outboundMessage: Message = {
+            id: Date.now().toString() + '_out',
+            phone_number: phoneNumber,
+            body: aiResponse.reply,
+            direction: 'outbound',
+            timestamp: new Date().toISOString(),
+            processed: true,
+            created_at: new Date().toISOString(),
+            read: true
+          }
+          
+          messageStore.unshift(outboundMessage)
+          console.log('📤 Outbound message stored:', outboundMessage)
           
           // Log action needed for manual follow-up
           if (aiResponse.action.includes('URGENT') || aiResponse.intent === 'Emergency') {
@@ -157,6 +191,45 @@ export class MessageProcessor {
       
       // Don't throw the error - we want the webhook to return 200 to OpenPhone
     }
+  }
+
+  // Method to get all messages (for API endpoint)
+  getMessages(): Message[] {
+    return [...messageStore].sort((a, b) => 
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    )
+  }
+
+  // Method to mark message as read
+  markMessageAsRead(messageId: string): void {
+    const messageIndex = messageStore.findIndex(m => m.id === messageId)
+    if (messageIndex !== -1) {
+      messageStore[messageIndex].read = true
+    }
+  }
+
+  // Method to send a manual reply
+  async sendManualReply(phoneNumber: string, message: string): Promise<void> {
+    if (!this.openPhone) {
+      throw new Error('OpenPhone service not initialized')
+    }
+
+    await this.openPhone.sendSMS(phoneNumber, message)
+    
+    // Store the outbound message
+    const outboundMessage: Message = {
+      id: Date.now().toString() + '_manual',
+      phone_number: phoneNumber,
+      body: message,
+      direction: 'outbound',
+      timestamp: new Date().toISOString(),
+      processed: true,
+      created_at: new Date().toISOString(),
+      read: true
+    }
+    
+    messageStore.unshift(outboundMessage)
+    console.log('📤 Manual reply sent and stored:', outboundMessage)
   }
 
   private getEmergencyFallback(messageBody: string): AIResponse {
