@@ -1,6 +1,5 @@
 import { OpenAIService } from './openai'
 import { OpenPhoneService } from './openphone'
-import { supabase } from './supabase'
 import type { Message, BusinessSettings, AIResponse } from '../types'
 import toast from 'react-hot-toast'
 
@@ -11,26 +10,18 @@ export class MessageProcessor {
 
   async initialize() {
     try {
-      // Get business settings from Supabase
-      const { data: settings, error } = await supabase
-        .from('business_settings')
-        .select('*')
-        .single()
-
-      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
-        throw error
-      }
-
-      if (settings) {
-        this.settings = settings
+      // Get business settings from localStorage
+      const savedSettings = localStorage.getItem('business-settings')
+      if (savedSettings) {
+        this.settings = JSON.parse(savedSettings)
         
         // Initialize services if API keys are available
-        if (settings.openai_api_key) {
-          this.openAI = new OpenAIService(settings.openai_api_key)
+        if (this.settings?.openai_api_key) {
+          this.openAI = new OpenAIService(this.settings.openai_api_key)
         }
         
-        if (settings.openphone_api_key && settings.phone_number) {
-          this.openPhone = new OpenPhoneService(settings.openphone_api_key, settings.phone_number)
+        if (this.settings?.openphone_api_key && this.settings?.phone_number) {
+          this.openPhone = new OpenPhoneService(this.settings.openphone_api_key, this.settings.phone_number)
         }
       }
     } catch (error) {
@@ -40,22 +31,22 @@ export class MessageProcessor {
 
   async processIncomingMessage(phoneNumber: string, messageBody: string): Promise<void> {
     try {
-      // Store incoming message
-      const { data: message, error: insertError } = await supabase
-        .from('messages')
-        .insert({
-          phone_number: phoneNumber,
-          body: messageBody,
-          direction: 'inbound',
-          timestamp: new Date().toISOString(),
-          processed: false
-        })
-        .select()
-        .single()
-
-      if (insertError) {
-        throw insertError
+      // Create new message object
+      const message: Message = {
+        id: Date.now().toString(),
+        phone_number: phoneNumber,
+        body: messageBody,
+        direction: 'inbound',
+        timestamp: new Date().toISOString(),
+        processed: false,
+        created_at: new Date().toISOString()
       }
+
+      // Store message in localStorage
+      const savedMessages = localStorage.getItem('messages')
+      const messages = savedMessages ? JSON.parse(savedMessages) : []
+      messages.unshift(message)
+      localStorage.setItem('messages', JSON.stringify(messages))
 
       // Check if Do Not Disturb is enabled
       const isDndEnabled = await this.isDndEnabled()
@@ -106,26 +97,37 @@ export class MessageProcessor {
       // Send SMS response
       await this.openPhone.sendSMS(phoneNumber, aiResponse.reply)
 
-      // Store outbound message
-      await supabase.from('messages').insert({
+      // Create outbound message
+      const outboundMessage: Message = {
+        id: Date.now().toString() + '_out',
         phone_number: phoneNumber,
         body: aiResponse.reply,
         direction: 'outbound',
         timestamp: new Date().toISOString(),
-        processed: true
-      })
+        processed: true,
+        created_at: new Date().toISOString()
+      }
 
+      // Update messages in localStorage
+      const savedMessages = localStorage.getItem('messages')
+      const messages = savedMessages ? JSON.parse(savedMessages) : []
+      
+      // Add outbound message
+      messages.unshift(outboundMessage)
+      
       // Update original message with AI response data
-      await supabase
-        .from('messages')
-        .update({
+      const messageIndex = messages.findIndex((m: Message) => m.id === messageId)
+      if (messageIndex !== -1) {
+        messages[messageIndex] = {
+          ...messages[messageIndex],
           processed: true,
           ai_response: aiResponse.reply,
           intent: aiResponse.intent,
           action: aiResponse.action
-        })
-        .eq('id', messageId)
+        }
+      }
 
+      localStorage.setItem('messages', JSON.stringify(messages))
       toast.success('AI response sent successfully')
     } catch (error) {
       console.error('Error sending response:', error)
@@ -142,13 +144,12 @@ export class MessageProcessor {
 
   private async isDndEnabled(): Promise<boolean> {
     try {
-      const { data, error } = await supabase
-        .from('business_settings')
-        .select('dnd_enabled')
-        .single()
-
-      if (error) return false
-      return data?.dnd_enabled || false
+      const savedSettings = localStorage.getItem('business-settings')
+      if (savedSettings) {
+        const settings = JSON.parse(savedSettings)
+        return settings?.dnd_enabled || false
+      }
+      return false
     } catch {
       return false
     }

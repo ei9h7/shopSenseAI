@@ -4,7 +4,7 @@ import { useBusinessSettings } from '../hooks/useBusinessSettings'
 
 const DoNotDisturbToggle: React.FC = () => {
   const { settings, toggleDnd } = useBusinessSettings()
-  const isDndEnabled = settings?.dnd_enabled || false
+  const isDndEnabled = (settings as any)?.dnd_enabled || false
 
   const handleToggle = () => {
     toggleDnd(!isDndEnabled)

@@ -1,67 +1,78 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { supabase } from '../services/supabase'
+import { useState, useEffect } from 'react'
 import type { BusinessSettings } from '../types'
 import toast from 'react-hot-toast'
 
+// Mock data for business settings
+const defaultSettings: BusinessSettings = {
+  id: '1',
+  business_name: 'Pink Chicken Speed Shop',
+  labor_rate: 80,
+  phone_number: '',
+  business_number: '',
+  gst_setting: 'parts',
+  openai_api_key: '',
+  openphone_api_key: '',
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString()
+}
+
 export const useBusinessSettings = () => {
-  const queryClient = useQueryClient()
+  const [settings, setSettings] = useState<BusinessSettings | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isUpdating, setIsUpdating] = useState(false)
 
-  const settingsQuery = useQuery({
-    queryKey: ['business-settings'],
-    queryFn: async (): Promise<BusinessSettings | null> => {
-      const { data, error } = await supabase
-        .from('business_settings')
-        .select('*')
-        .single()
-
-      if (error && error.code !== 'PGRST116') {
-        throw error
-      }
-
-      return data
+  useEffect(() => {
+    // Load settings from localStorage
+    const savedSettings = localStorage.getItem('business-settings')
+    if (savedSettings) {
+      setSettings(JSON.parse(savedSettings))
+    } else {
+      setSettings(defaultSettings)
     }
-  })
+    setIsLoading(false)
+  }, [])
 
-  const updateSettingsMutation = useMutation({
-    mutationFn: async (settings: Partial<BusinessSettings>) => {
-      const { data, error } = await supabase
-        .from('business_settings')
-        .upsert(settings)
-        .select()
-        .single()
+  const updateSettings = async (newSettings: Partial<BusinessSettings>) => {
+    setIsUpdating(true)
+    try {
+      const updatedSettings = {
+        ...settings,
+        ...newSettings,
+        updated_at: new Date().toISOString()
+      } as BusinessSettings
 
-      if (error) throw error
-      return data
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['business-settings'] })
+      localStorage.setItem('business-settings', JSON.stringify(updatedSettings))
+      setSettings(updatedSettings)
       toast.success('Settings updated successfully')
-    },
-    onError: (error) => {
+    } catch (error) {
       console.error('Settings update error:', error)
       toast.error('Failed to update settings')
+    } finally {
+      setIsUpdating(false)
     }
-  })
+  }
 
-  const toggleDndMutation = useMutation({
-    mutationFn: async (enabled: boolean) => {
-      const { error } = await supabase
-        .from('business_settings')
-        .upsert({ dnd_enabled: enabled })
+  const toggleDnd = async (enabled: boolean) => {
+    try {
+      const updatedSettings = {
+        ...settings,
+        dnd_enabled: enabled,
+        updated_at: new Date().toISOString()
+      } as BusinessSettings & { dnd_enabled: boolean }
 
-      if (error) throw error
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['business-settings'] })
+      localStorage.setItem('business-settings', JSON.stringify(updatedSettings))
+      setSettings(updatedSettings)
+    } catch (error) {
+      console.error('DND toggle error:', error)
     }
-  })
+  }
 
   return {
-    settings: settingsQuery.data,
-    isLoading: settingsQuery.isLoading,
-    error: settingsQuery.error,
-    updateSettings: updateSettingsMutation.mutate,
-    isUpdating: updateSettingsMutation.isPending,
-    toggleDnd: toggleDndMutation.mutate
+    settings,
+    isLoading,
+    error: null,
+    updateSettings,
+    isUpdating,
+    toggleDnd
   }
 }
