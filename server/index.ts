@@ -30,7 +30,7 @@ app.get('/health', (req, res) => {
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({
-    name: 'TorqueGPT Webhook Server',
+    name: 'TorqueSheetGPT Webhook Server',
     version: '1.0.0',
     endpoints: {
       health: '/health',
@@ -56,8 +56,19 @@ app.use('*', (req, res) => {
 // Start server
 app.listen(PORT, () => {
   console.log(`🚀 Webhook server running on port ${PORT}`)
-  console.log(`📡 OpenPhone webhook URL: ${process.env.NODE_ENV === 'production' ? 'https://your-domain.railway.app' : `http://localhost:${PORT}`}/api/webhooks/openphone`)
-  console.log(`🏥 Health check: ${process.env.NODE_ENV === 'production' ? 'https://your-domain.railway.app' : `http://localhost:${PORT}`}/health`)
+  
+  // Show the correct URLs based on environment
+  const baseUrl = process.env.NODE_ENV === 'production' 
+    ? 'https://torquegpt.onrender.com'  // Your actual Render URL
+    : `http://localhost:${PORT}`
+  
+  console.log(`📡 OpenPhone webhook URL: ${baseUrl}/api/webhooks/openphone`)
+  console.log(`🏥 Health check: ${baseUrl}/health`)
+  
+  if (process.env.NODE_ENV === 'production') {
+    console.log(`✅ TorqueSheetGPT webhook server deployed successfully!`)
+    console.log(`🔗 Use this webhook URL in OpenPhone: ${baseUrl}/api/webhooks/openphone`)
+  }
 })
 
 export default app
