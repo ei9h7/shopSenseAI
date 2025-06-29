@@ -40,7 +40,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center space-x-2">
             <Wrench className="h-8 w-8 text-primary-600" />
-            <span className="text-xl font-bold text-gray-900">TorqueGPT</span>
+            <span className="text-xl font-bold text-gray-900">TorqueSheetGPT</span>
           </div>
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -84,7 +84,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <div className="flex flex-col flex-grow bg-white border-r border-gray-200 pt-5 pb-4 overflow-y-auto">
               <div className="flex items-center flex-shrink-0 px-4">
                 <Wrench className="h-8 w-8 text-primary-600" />
-                <span className="ml-2 text-xl font-bold text-gray-900">TorqueGPT</span>
+                <span className="ml-2 text-xl font-bold text-gray-900">TorqueSheetGPT</span>
               </div>
               <div className="mt-8 flex-grow flex flex-col">
                 <nav className="flex-1 px-2 space-y-1">
