@@ -1,6 +1,6 @@
-# Alternative Deployment Methods
+# TorqueSheetGPT - Alternative Deployment Methods
 
-Since Railway CLI installation failed in WebContainer, here are alternative deployment methods:
+Since Railway CLI installation failed in WebContainer, here are alternative deployment methods for the TorqueSheetGPT webhook server:
 
 ## Option 1: Railway Web Dashboard (Recommended)
 
@@ -27,7 +27,7 @@ Since Railway CLI installation failed in WebContainer, here are alternative depl
 2. **Click "New" → "Web Service"**
 3. **Connect your GitHub repository**
 4. **Configure:**
-   - Name: `torque-gpt-webhook`
+   - Name: `torquesheetgpt-webhook`
    - Root Directory: `server`
    - Build Command: `npm install && npm run build`
    - Start Command: `npm start`
@@ -68,7 +68,7 @@ Since Railway CLI installation failed in WebContainer, here are alternative depl
 
 ## Recommended: Railway Web Dashboard
 
-Railway is the easiest option. Here's the step-by-step:
+Railway is the easiest option for TorqueSheetGPT. Here's the step-by-step:
 
 1. **Visit [railway.app](https://railway.app)**
 2. **Sign up with GitHub**
@@ -81,6 +81,34 @@ Railway is the easiest option. Here's the step-by-step:
 7. **Railway will automatically build and deploy**
 8. **Copy the generated URL (something like `https://your-app.railway.app`)**
 9. **Your webhook URL will be: `https://your-app.railway.app/api/webhooks/openphone`**
+
+## Local Development Setup
+
+Before deploying, test locally:
+
+1. **Clone repository**
+   ```bash
+   git clone <repository-url>
+   cd torquesheetgpt
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   cd server && npm install && cd ..
+   ```
+
+3. **Set up environment variables**
+   ```bash
+   cp .env.example .env
+   cd server && cp .env.example .env && cd ..
+   ```
+
+4. **Start development servers**
+   ```bash
+   npm run dev
+   ```
+   This starts both frontend (port 5173) and webhook server (port 3001)
 
 ## After Deployment
 
@@ -97,5 +125,12 @@ Railway is the easiest option. Here's the step-by-step:
    - Save
 
 3. **Test with a message to your OpenPhone number**
+
+## Features of TorqueSheetGPT
+
+- **Graceful AI Fallback**: When OpenAI credits run out, uses intelligent fallback responses
+- **Emergency Detection**: Automatically detects and prioritizes urgent messages  
+- **Do Not Disturb Mode**: Toggle automatic responses on/off
+- **Comprehensive Logging**: Detailed logs for debugging and monitoring
 
 Choose the deployment method that works best for you. Railway is recommended for its simplicity and Node.js optimization.
