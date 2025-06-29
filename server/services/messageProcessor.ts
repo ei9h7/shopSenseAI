@@ -48,6 +48,8 @@ export class MessageProcessor {
       if (this.settings.openphone_api_key && this.settings.phone_number) {
         this.openPhone = new OpenPhoneService(this.settings.openphone_api_key, this.settings.phone_number)
         console.log('✅ OpenPhone service initialized')
+        console.log(`📱 Using OpenPhone number: ${this.settings.phone_number}`)
+        console.log(`🔑 OpenPhone API key: ${this.settings.openphone_api_key.substring(0, 8)}...`)
       } else {
         console.warn('⚠️  OpenPhone API key or phone number not found')
       }
@@ -110,40 +112,55 @@ export class MessageProcessor {
           aiResponse = this.getEmergencyFallback(messageBody)
         }
 
-        // Always send a response
-        await this.sendResponse(phoneNumber, aiResponse, message.id)
-        
-        // Log action needed for manual follow-up
-        if (aiResponse.action.includes('URGENT') || aiResponse.intent === 'Emergency') {
-          console.log('🚨🚨🚨 URGENT ACTION REQUIRED 🚨🚨🚨')
-          console.log(`📞 CALL ${phoneNumber} IMMEDIATELY`)
+        // Always try to send a response
+        try {
+          await this.sendResponse(phoneNumber, aiResponse, message.id)
+          
+          // Log action needed for manual follow-up
+          if (aiResponse.action.includes('URGENT') || aiResponse.intent === 'Emergency') {
+            console.log('🚨🚨🚨 URGENT ACTION REQUIRED 🚨🚨🚨')
+            console.log(`📞 CALL ${phoneNumber} IMMEDIATELY`)
+            console.log(`💬 Message: "${messageBody}"`)
+            console.log('🚨🚨🚨 URGENT ACTION REQUIRED 🚨🚨🚨')
+          }
+        } catch (smsError) {
+          console.error('❌ Failed to send SMS response:', smsError)
+          
+          // Log the failure but don't throw - we want to continue processing
+          console.log('📝 MESSAGE PROCESSING SUMMARY:')
+          console.log(`📱 From: ${phoneNumber}`)
           console.log(`💬 Message: "${messageBody}"`)
-          console.log('🚨🚨🚨 URGENT ACTION REQUIRED 🚨🚨🚨')
+          console.log(`🤖 AI Response: "${aiResponse.reply}"`)
+          console.log(`🎯 Intent: ${aiResponse.intent}`)
+          console.log(`📋 Action: ${aiResponse.action}`)
+          console.log('❌ SMS SENDING FAILED - MANUAL RESPONSE REQUIRED')
+          
+          if (aiResponse.intent === 'Emergency' || aiResponse.action.includes('URGENT')) {
+            console.log('🚨🚨🚨 EMERGENCY - IMMEDIATE MANUAL RESPONSE REQUIRED 🚨🚨🚨')
+          }
         }
       } else {
         console.error('❌ OpenPhone service not available - cannot send response')
+        console.log('📝 MESSAGE RECEIVED BUT NO RESPONSE CAPABILITY:')
+        console.log(`📱 From: ${phoneNumber}`)
+        console.log(`💬 Message: "${messageBody}"`)
+        console.log('⚠️  MANUAL RESPONSE REQUIRED')
       }
     } catch (error) {
       console.error('❌ Error processing message:', error)
       
-      // Last resort: try to send a basic acknowledgment
-      if (this.openPhone) {
-        try {
-          await this.openPhone.sendSMS(
-            phoneNumber, 
-            "Message received! I'll get back to you soon. If urgent, please call me directly."
-          )
-          console.log('✅ Sent emergency acknowledgment')
-        } catch (smsError) {
-          console.error('❌ Failed to send emergency acknowledgment:', smsError)
-        }
-      }
+      // Log the message details for manual follow-up
+      console.log('📝 MESSAGE PROCESSING FAILED:')
+      console.log(`📱 From: ${phoneNumber}`)
+      console.log(`💬 Message: "${messageBody}"`)
+      console.log('⚠️  MANUAL RESPONSE REQUIRED')
       
-      throw error
+      // Don't throw the error - we want the webhook to return 200 to OpenPhone
     }
   }
 
   private getEmergencyFallback(messageBody: string): AIResponse {
+    // Intelligent fallback logic when AI is unavailable
     const lowerMessage = messageBody.toLowerCase()
     
     // Check for emergency keywords
@@ -155,17 +172,71 @@ export class MessageProcessor {
         lowerMessage.includes('help') ||
         lowerMessage.includes('stuck')) {
       return {
-        reply: "🚨 EMERGENCY RECEIVED! I got your urgent message. If you're in immediate danger, call 911. Otherwise, I'll contact you within 15 minutes. Stay safe!",
+        reply: "🚨 EMERGENCY RECEIVED! I got your urgent message and will respond immediately. If you're in immediate danger, please call 911. Otherwise, I'll contact you within 15 minutes. Stay safe!",
         intent: "Emergency",
         action: "URGENT - Contact customer immediately"
       }
     }
     
-    // Default safe response
+    // Service/maintenance requests
+    if (lowerMessage.includes('oil change') || 
+        lowerMessage.includes('service') || 
+        lowerMessage.includes('maintenance') ||
+        lowerMessage.includes('tune up') ||
+        lowerMessage.includes('inspection')) {
+      return {
+        reply: "Hi! Thanks for reaching out about service. I'd be happy to help with your vehicle maintenance. My rate is $80/hr with a 1-hour minimum. I'll get back to you shortly with more details!",
+        intent: "Service Request",
+        action: "Follow up with service quote"
+      }
+    }
+    
+    // Quote requests
+    if (lowerMessage.includes('quote') || 
+        lowerMessage.includes('price') || 
+        lowerMessage.includes('cost') ||
+        lowerMessage.includes('estimate') ||
+        lowerMessage.includes('how much')) {
+      return {
+        reply: "Thanks for your quote request! I'd be happy to provide an estimate. My labor rate is $80/hr with a 1-hour minimum. I'll review your message and get back to you with a detailed quote soon.",
+        intent: "Quote Request",
+        action: "Prepare detailed quote"
+      }
+    }
+    
+    // Repair/problem descriptions
+    if (lowerMessage.includes('problem') || 
+        lowerMessage.includes('issue') || 
+        lowerMessage.includes('broken') ||
+        lowerMessage.includes('noise') ||
+        lowerMessage.includes('leak') ||
+        lowerMessage.includes('won\'t start') ||
+        lowerMessage.includes('not working')) {
+      return {
+        reply: "I received your message about the issue with your vehicle. I'll take a look at what you've described and get back to you with next steps. My diagnostic rate is $80/hr. Thanks for reaching out!",
+        intent: "Repair Request",
+        action: "Diagnose issue and provide solution"
+      }
+    }
+    
+    // Booking/appointment requests
+    if (lowerMessage.includes('appointment') || 
+        lowerMessage.includes('schedule') || 
+        lowerMessage.includes('book') ||
+        lowerMessage.includes('available') ||
+        lowerMessage.includes('when can')) {
+      return {
+        reply: "Thanks for wanting to schedule service! I'll check my availability and get back to you with some time options. My rate is $80/hr with a 1-hour minimum. Looking forward to helping you!",
+        intent: "Booking Request",
+        action: "Check schedule and offer appointment times"
+      }
+    }
+    
+    // Default response for any other message
     return {
-      reply: "Thanks for your message! I received it and will get back to you personally within the hour. If this is urgent, please call me directly.",
+      reply: "Hi! Thanks for your message. I'm Pink Chicken Speed Shop and I received your inquiry. I'll review it and get back to you personally within the hour. My rate is $80/hr. Thanks for choosing us!",
       intent: "General Inquiry",
-      action: "Manual review and response needed"
+      action: "Review message and provide personalized response"
     }
   }
 
@@ -186,6 +257,17 @@ export class MessageProcessor {
       console.log(`📋 Action required: ${aiResponse.action}`)
     } catch (error) {
       console.error('❌ Error sending response:', error)
+      
+      // Check if it's an authentication error
+      if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+        console.error('🔑 OPENPHONE API AUTHENTICATION FAILED!')
+        console.error('   - Check if your OpenPhone API key is valid')
+        console.error('   - Verify the API key has SMS sending permissions')
+        console.error('   - Ensure the phone number is correctly configured')
+        console.error(`   - Current API key: ${this.settings?.openphone_api_key?.substring(0, 8)}...`)
+        console.error(`   - Current phone number: ${this.settings?.phone_number}`)
+      }
+      
       throw error
     }
   }
