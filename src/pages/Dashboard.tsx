@@ -17,6 +17,7 @@ import DoNotDisturbToggle from '../components/DoNotDisturbToggle'
 import { useMessages } from '../hooks/useMessages'
 import { useQuotes } from '../hooks/useQuotes'
 import { useTechSheets } from '../hooks/useTechSheets'
+import { useCalendar } from '../hooks/useCalendar'
 
 /**
  * Dashboard Component
@@ -25,6 +26,7 @@ import { useTechSheets } from '../hooks/useTechSheets'
  * - Real-time message statistics with emergency alerts
  * - Quote management and revenue tracking
  * - Tech sheet generation statistics
+ * - Calendar appointments and scheduling
  * - Recent activity feed with priority indicators
  * - Quick action buttons for common tasks
  * - Do Not Disturb toggle for AI response control
@@ -36,15 +38,17 @@ const Dashboard: React.FC = () => {
   const { messages, getUnreadCount, getEmergencyMessages } = useMessages()
   const { getQuoteStats } = useQuotes()
   const { getTechSheetStats } = useTechSheets()
+  const { getCalendarStats, getTodaysAppointments } = useCalendar()
   
   // Calculate real stats from data
   const unreadMessages = getUnreadCount()
   const emergencyMessages = getEmergencyMessages()
   const quoteStats = getQuoteStats()
   const techSheetStats = getTechSheetStats()
+  const calendarStats = getCalendarStats()
+  const todaysAppointments = getTodaysAppointments()
   
   // Mock data for features not yet implemented
-  const todayAppointments = 0 // TODO: Implement calendar functionality
   const monthlyRevenue = quoteStats.totalValue
 
   const recentActivity = [
@@ -54,6 +58,13 @@ const Dashboard: React.FC = () => {
       content: `Emergency message from ${msg.phone_number}: ${msg.body.substring(0, 50)}...`,
       time: new Date(msg.timestamp).toLocaleString(),
       urgent: true
+    })),
+    ...todaysAppointments.slice(0, 2).map(apt => ({
+      id: apt.id,
+      type: 'appointment' as const,
+      content: `Appointment: ${apt.customer_name} - ${apt.vehicle_info} at ${apt.time}`,
+      time: new Date(apt.created_at).toLocaleString(),
+      urgent: false
     })),
     ...messages
       .filter(msg => msg.direction === 'inbound' && !msg.intent?.toLowerCase().includes('emergency'))
@@ -106,6 +117,30 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
+      {/* Today's Appointments Alert */}
+      {todaysAppointments.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <Calendar className="h-5 w-5 text-blue-400" />
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-blue-800">
+                📅 {todaysAppointments.length} Appointment{todaysAppointments.length > 1 ? 's' : ''} Today
+              </h3>
+              <div className="mt-2 text-sm text-blue-700">
+                <p>
+                  You have appointments scheduled for today.{' '}
+                  <Link to="/calendar" className="font-medium underline hover:text-blue-900">
+                    View calendar →
+                  </Link>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Stats Grid */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
         <DashboardCard
@@ -116,25 +151,25 @@ const Dashboard: React.FC = () => {
           href="/messages"
         />
         <DashboardCard
+          title="Today's Appointments"
+          value={calendarStats.today}
+          icon={Calendar}
+          color="green"
+          href="/calendar"
+        />
+        <DashboardCard
           title="Active Quotes"
           value={quoteStats.active}
           icon={FileText}
-          color="green"
+          color="purple"
           href="/quotes"
         />
         <DashboardCard
           title="Tech Sheets"
           value={techSheetStats.total}
           icon={ClipboardList}
-          color="purple"
-          href="/tech-sheets"
-        />
-        <DashboardCard
-          title="Monthly Revenue"
-          value={`$${monthlyRevenue.toLocaleString()}`}
-          icon={DollarSign}
           color="yellow"
-          href="/invoices"
+          href="/tech-sheets"
         />
       </div>
 
@@ -152,6 +187,7 @@ const Dashboard: React.FC = () => {
                     {activity.type === 'message' && <MessageSquare className="h-5 w-5" />}
                     {activity.type === 'quote' && <FileText className="h-5 w-5" />}
                     {activity.type === 'emergency' && <AlertTriangle className="h-5 w-5" />}
+                    {activity.type === 'appointment' && <Calendar className="h-5 w-5" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className={`text-sm ${activity.urgent ? 'text-red-900 font-medium' : 'text-gray-900'}`}>
@@ -198,6 +234,13 @@ const Dashboard: React.FC = () => {
               View Messages
             </Link>
             <Link
+              to="/calendar"
+              className="flex items-center justify-center px-4 py-3 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+            >
+              <Calendar className="h-5 w-5 mr-2" />
+              Schedule Appointment
+            </Link>
+            <Link
               to="/quotes"
               className="flex items-center justify-center px-4 py-3 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
             >
@@ -210,13 +253,6 @@ const Dashboard: React.FC = () => {
             >
               <ClipboardList className="h-5 w-5 mr-2" />
               Generate Tech Sheet
-            </Link>
-            <Link
-              to="/settings"
-              className="flex items-center justify-center px-4 py-3 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-            >
-              <Clock className="h-5 w-5 mr-2" />
-              Settings
             </Link>
           </div>
         </div>

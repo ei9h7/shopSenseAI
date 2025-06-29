@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useCalendar } from './useCalendar'
 
 export interface Quote {
   id: string
@@ -18,6 +19,7 @@ export interface Quote {
 export const useQuotes = () => {
   const [quotes, setQuotes] = useState<Quote[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const { bookFromQuote } = useCalendar()
 
   useEffect(() => {
     loadQuotes()
@@ -54,9 +56,22 @@ export const useQuotes = () => {
   }
 
   const updateQuoteStatus = (quoteId: string, status: Quote['status']) => {
-    const updatedQuotes = quotes.map(quote =>
-      quote.id === quoteId ? { ...quote, status } : quote
-    )
+    const updatedQuotes = quotes.map(quote => {
+      if (quote.id === quoteId) {
+        const updatedQuote = { ...quote, status }
+        
+        // When quote is accepted, prepare appointment booking data
+        if (status === 'accepted') {
+          // This creates the appointment template that can be completed by customer
+          const appointmentTemplate = bookFromQuote(updatedQuote)
+          console.log('📅 Quote accepted - appointment template created:', appointmentTemplate)
+        }
+        
+        return updatedQuote
+      }
+      return quote
+    })
+    
     setQuotes(updatedQuotes)
     localStorage.setItem('quotes', JSON.stringify(updatedQuotes))
   }
