@@ -21,13 +21,13 @@ export class OpenPhoneService {
       const response = await axios.post(
         `${OPENPHONE_API_URL}/messages`,
         {
-          to: [to],
-          text: message,
-          from: this.phoneNumber
+          content: message,  // OpenPhone uses 'content' not 'text'
+          from: this.phoneNumber,
+          to: [to]
         },
         {
           headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
+            'Authorization': this.apiKey,  // No 'Bearer' prefix
             'Content-Type': 'application/json'
           }
         }
@@ -44,7 +44,7 @@ export class OpenPhoneService {
       console.error(`   Phone Number: ${this.phoneNumber}`)
       
       if (error.response?.status === 401) {
-        throw new Error(`OpenPhone API Authentication Failed (401): ${error.response?.data?.message || 'Unauthorized'}`)
+        throw new Error(`OpenPhone API Authentication Failed (401): ${error.response?.data?.message || 'Unauthorized - Check API key format'}`)
       } else if (error.response?.status === 403) {
         throw new Error(`OpenPhone API Forbidden (403): ${error.response?.data?.message || 'Forbidden'}`)
       } else if (error.response?.status === 400) {
@@ -61,7 +61,7 @@ export class OpenPhoneService {
         `${OPENPHONE_API_URL}/messages?limit=${limit}`,
         {
           headers: {
-            'Authorization': `Bearer ${this.apiKey}`
+            'Authorization': this.apiKey  // No 'Bearer' prefix
           }
         }
       )
