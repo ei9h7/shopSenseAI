@@ -1,8 +1,22 @@
 # TorqueSheetGPT Webhook Server
 
+> **Built with [Bolt.new](https://bolt.new)** ⚡
+
 This is the standalone webhook server for TorqueSheetGPT that handles OpenPhone webhooks and processes messages with AI.
 
-## Quick Start
+## 🚀 Production Deployment
+
+**Live Server**: https://torquegpt.onrender.com
+
+### **Key Features**
+- **OpenPhone Webhook Processing**: Receives and processes SMS messages
+- **AI Message Processing**: Uses OpenAI GPT-4 for intelligent responses
+- **Graceful Fallback System**: Ensures customers always get responses
+- **Emergency Detection**: Prioritizes urgent messages
+- **Settings API**: Provides server configuration to frontend
+- **Health Monitoring**: Comprehensive health checks and logging
+
+## 🔧 Quick Start
 
 ### Local Development
 
@@ -27,14 +41,14 @@ This is the standalone webhook server for TorqueSheetGPT that handles OpenPhone 
    OPENPHONE_PHONE_NUMBER=your_openphone_number_here
    BUSINESS_NAME=Pink Chicken Speed Shop
    LABOR_RATE=80
-   DND_ENABLED=false
+   DND_ENABLED=true
    ```
 
 4. **Start the server**
    ```bash
    npm run dev
    ```
-   Server will run on http://localhost:3001
+   Server will run on http://localhost:10000
 
 ### Production Build
 
@@ -43,34 +57,24 @@ npm run build
 npm start
 ```
 
-## Deployment on Railway
+## 🌐 Deployment on Render
 
 ### 1. Prepare for Deployment
 
-1. Create a Railway account at [railway.app](https://railway.app)
-2. Install Railway CLI: `npm install -g @railway/cli`
-3. Login: `railway login`
+1. Create a Render account at [render.com](https://render.com)
+2. Connect your GitHub repository
 
 ### 2. Deploy
 
-1. Navigate to the server directory:
-   ```bash
-   cd server
-   ```
-
-2. Initialize Railway project:
-   ```bash
-   railway init
-   ```
-
-3. Deploy:
-   ```bash
-   railway up
-   ```
+1. Create a new **Web Service** on Render
+2. Configure:
+   - **Root Directory**: `server`
+   - **Build Command**: `npm install && npm run build`
+   - **Start Command**: `npm start`
 
 ### 3. Set Environment Variables
 
-In your Railway dashboard, add these environment variables:
+In your Render dashboard, add these environment variables:
 
 ```
 OPENAI_API_KEY=your_openai_api_key_here
@@ -78,96 +82,225 @@ OPENPHONE_API_KEY=your_openphone_api_key_here
 OPENPHONE_PHONE_NUMBER=your_openphone_number_here
 BUSINESS_NAME=Pink Chicken Speed Shop
 LABOR_RATE=80
-DND_ENABLED=false
+DND_ENABLED=true
 NODE_ENV=production
 ```
 
 ### 4. Get Your Webhook URL
 
-After deployment, Railway will provide you with a URL like:
-`https://your-app-name.railway.app`
-
-Your webhook URL will be:
-`https://your-app-name.railway.app/api/webhooks/openphone`
+After deployment, your webhook URL will be:
+`https://your-app-name.onrender.com/api/webhooks/openphone`
 
 ### 5. Configure OpenPhone
 
 1. Go to your OpenPhone dashboard
 2. Navigate to Settings → Webhooks
-3. Add a new webhook with your Railway URL
+3. Add a new webhook with your Render URL
 4. Select "Message Received" as the trigger event
 5. Save the configuration
 
-## Alternative Deployment Options
+## 📡 API Endpoints
 
-### Render (Free Tier Available)
+### **Health Check**
+```bash
+GET /health
+```
+Returns server status and environment information.
 
-1. Connect your GitHub repository to Render
-2. Create a new Web Service
-3. Set root directory to `server`
-4. Build command: `npm install && npm run build`
-5. Start command: `npm start`
-6. Add environment variables in Render dashboard
+### **Settings API**
+```bash
+GET /api/settings
+```
+Returns API key configuration status and business settings.
 
-### Heroku
+### **Messages API**
+```bash
+GET /api/messages
+POST /api/messages/reply
+POST /api/messages/:id/read
+```
+Manages message history and manual replies.
 
-1. Install Heroku CLI
-2. Create new app: `heroku create your-app-name`
-3. Set environment variables: `heroku config:set OPENAI_API_KEY=your_key`
-4. Deploy: `git push heroku main`
+### **Webhook Endpoint**
+```bash
+POST /api/webhooks/openphone
+```
+Processes incoming OpenPhone webhook events.
 
-## API Endpoints
+## 🤖 AI Processing Features
 
-- **Health Check**: `GET /health`
-- **Webhook**: `POST /api/webhooks/openphone`
-- **Root**: `GET /` (API info)
+### **Intelligent Message Processing**
+- **Professional Responses**: Generates appropriate replies for automotive service inquiries
+- **Quote Generation**: Calculates estimates using $80/hr labor rate
+- **Intent Classification**: Identifies message types (Emergency, Quote Request, Booking, etc.)
+- **Action Recommendations**: Suggests follow-up actions for staff
 
-## Features
+### **Graceful Fallback System**
+When OpenAI API is unavailable, the system uses intelligent keyword-based responses:
 
-- **Graceful AI Fallback**: When OpenAI credits run out, uses intelligent fallback responses
-- **Emergency Detection**: Automatically detects and prioritizes urgent messages
-- **Do Not Disturb Mode**: Toggle automatic responses on/off
-- **Comprehensive Logging**: Detailed logs for debugging and monitoring
+- **Emergency Detection**: `emergency`, `urgent`, `breakdown`, `stranded`, `accident`
+- **Service Requests**: `oil change`, `service`, `maintenance`, `tune up`
+- **Quote Requests**: `quote`, `price`, `cost`, `estimate`
+- **Repair Issues**: `problem`, `issue`, `broken`, `noise`, `leak`
+- **Booking Requests**: `appointment`, `schedule`, `book`, `available`
 
-## Health Check
+### **Emergency Handling**
+- Automatic detection of urgent messages
+- Immediate response with callback promise
+- Priority alerts for staff attention
+- Override of Do Not Disturb settings
 
-Your deployed server will have a health check endpoint at:
-`https://your-domain.com/health`
+## 🔍 Monitoring & Debugging
 
-## Webhook Testing
+### **Health Checks**
+```bash
+# Check server status
+curl https://torquegpt.onrender.com/health
 
-You can test your webhook locally using ngrok:
+# Check settings configuration
+curl https://torquegpt.onrender.com/api/settings
+```
 
-1. Install ngrok: `npm install -g ngrok`
-2. Run your server: `npm run dev`
-3. In another terminal: `ngrok http 3001`
-4. Use the ngrok URL for your OpenPhone webhook
+### **Webhook Testing**
+```bash
+# Test webhook endpoint
+curl -X POST https://torquegpt.onrender.com/api/webhooks/openphone \
+  -H "Content-Type: application/json" \
+  -d '{"test": "webhook"}'
+```
 
-## Troubleshooting
+### **Log Monitoring**
+The server provides comprehensive logging:
+- 📨 Message processing events
+- 🤖 AI response generation
+- 📤 SMS sending status
+- ⚠️ Error handling and fallbacks
+- 🔍 Webhook payload validation
 
-### Common Issues
+## 🛡️ Error Handling
 
-1. **Build fails**: Check TypeScript compilation errors
-2. **Webhook not working**: Verify OpenPhone webhook URL
-3. **AI not responding**: Check OpenAI API key and credits
-4. **SMS not sending**: Verify OpenPhone API key and phone number
+### **AI Fallback Scenarios**
+- **Rate Limits**: Uses intelligent keyword responses
+- **No Credits**: Maintains professional communication
+- **Network Issues**: Ensures customer never goes unanswered
+- **Invalid API Keys**: Graceful degradation with logging
 
-### Logs
+### **SMS Delivery**
+- **Multiple Auth Methods**: Tries different OpenPhone API formats
+- **Detailed Error Reporting**: Specific error messages for troubleshooting
+- **Retry Logic**: Automatic retry for transient failures
 
-Check your deployment platform's logs for detailed error information:
-- Railway: View logs in Railway dashboard
-- Render: Check logs in Render dashboard
-- Heroku: Use `heroku logs --tail`
+### **Webhook Processing**
+- **Payload Validation**: Ensures only valid messages are processed
+- **Direction Filtering**: Ignores outbound messages to prevent loops
+- **Error Recovery**: Continues processing even if individual messages fail
 
-## Environment Variables
+## 🔐 Security Features
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `OPENAI_API_KEY` | OpenAI API key for AI processing | Yes |
-| `OPENPHONE_API_KEY` | OpenPhone API key for SMS | Yes |
-| `OPENPHONE_PHONE_NUMBER` | Your OpenPhone number | Yes |
-| `BUSINESS_NAME` | Your business name | No |
-| `LABOR_RATE` | Hourly labor rate | No |
-| `DND_ENABLED` | Enable/disable auto-responses | No |
-| `NODE_ENV` | Environment (production/development) | No |
-| `PORT` | Server port (auto-set by most platforms) | No |
+### **API Key Management**
+- Environment variable storage only
+- Masked display in API responses
+- No logging of sensitive data
+- Secure transmission over HTTPS
+
+### **Webhook Security**
+- HTTPS-only endpoints
+- Payload validation
+- Request logging for monitoring
+- Error handling without data exposure
+
+## 📈 Performance Optimization
+
+### **Cost Efficiency**
+- Uses GPT-4o-mini for reduced costs
+- Token limits to control usage
+- Intelligent fallbacks reduce API calls
+- Efficient message processing
+
+### **Reliability**
+- Multiple authentication methods
+- Comprehensive error handling
+- Health check endpoints
+- Graceful degradation
+
+## 🚨 Troubleshooting
+
+### **Common Issues**
+
+#### **Webhook Not Working**
+1. Check OpenPhone webhook URL configuration
+2. Verify server is running (`/health` endpoint)
+3. Check Render logs for incoming requests
+4. Ensure webhook URL uses HTTPS
+
+#### **AI Not Responding**
+1. Verify OpenAI API key is valid and has credits
+2. Check server environment variables
+3. Monitor logs for AI processing errors
+4. Fallback system should still provide responses
+
+#### **SMS Not Sending**
+1. Verify OpenPhone API key and permissions
+2. Check phone number format (+1234567890)
+3. Monitor logs for OpenPhone API errors
+4. Test with OpenPhone API directly
+
+### **Debug Commands**
+```bash
+# Check environment variables
+curl https://torquegpt.onrender.com/api/settings
+
+# Monitor real-time logs
+# (Available in Render dashboard)
+
+# Test message processing
+# Send SMS to your OpenPhone number
+```
+
+## 🎯 Future Enhancements
+
+### **Planned Features**
+- **Database Integration**: PostgreSQL for message persistence
+- **Analytics**: Message volume and response rate tracking
+- **Rate Limiting**: Protection against abuse
+- **Webhook Signing**: Enhanced security validation
+- **Multi-Language**: Support for different languages
+
+### **Scalability**
+- **Redis Caching**: For high-volume message handling
+- **Load Balancing**: Multiple server instances
+- **Database Clustering**: For enterprise use
+- **Monitoring**: Advanced metrics and alerting
+
+## 📄 Environment Variables
+
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `OPENAI_API_KEY` | OpenAI API key for AI processing | ✅ | - |
+| `OPENPHONE_API_KEY` | OpenPhone API key for SMS | ✅ | - |
+| `OPENPHONE_PHONE_NUMBER` | Your OpenPhone number | ✅ | - |
+| `BUSINESS_NAME` | Your business name | ❌ | `Pink Chicken Speed Shop` |
+| `LABOR_RATE` | Hourly labor rate | ❌ | `80` |
+| `DND_ENABLED` | Enable auto-responses | ❌ | `true` |
+| `NODE_ENV` | Environment mode | ❌ | `production` |
+| `PORT` | Server port | ❌ | `10000` |
+
+## 🤝 Contributing
+
+This server was built with [Bolt.new](https://bolt.new). To contribute:
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
+
+## 📄 License
+
+This project is open source and available under the [MIT License](LICENSE).
+
+---
+
+**TorqueSheetGPT Webhook Server** - Reliable, intelligent, and always responsive! 🚗⚡
+
+Built with [Bolt.new](https://bolt.new) - The future of AI-powered development.

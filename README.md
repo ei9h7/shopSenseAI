@@ -17,6 +17,7 @@ An AI-powered service advisor application for solo mechanics, featuring automate
 - **Graceful Fallback System**: When AI credits run out, uses intelligent keyword-based responses
 - **Emergency Detection**: Automatically identifies and prioritizes urgent messages
 - **Quote Generation**: AI estimates repair time and generates quotes using $80/hr rate
+- **Tech Sheet Generation**: Auto-creates detailed repair guides from accepted quotes
 
 ### 📱 **SMS Communication**
 - **OpenPhone Integration**: Receives and sends SMS messages via webhooks
@@ -36,12 +37,20 @@ An AI-powered service advisor application for solo mechanics, featuring automate
 - **Error Handling**: Comprehensive error handling and logging
 - **Scalable Design**: Separate frontend/backend for optimal performance
 
+### 🔧 **Workshop Management**
+- **Tech Sheet Generation**: AI-powered repair guides with step-by-step instructions
+- **Quote Management**: Professional quote creation and tracking
+- **Customer Communication**: Centralized message management
+- **Business Settings**: Configurable labor rates and business information
+
 ## 🏗️ Architecture
 
 ```
 Customer SMS → OpenPhone → Webhook Server (Render) → AI Processing → SMS Response
                     ↓
 Frontend App (Netlify) ← Settings Sync ← Server Environment Variables
+                    ↓
+Tech Sheet Generation ← Quote Acceptance ← AI Processing
 ```
 
 ### **Components:**
@@ -49,6 +58,7 @@ Frontend App (Netlify) ← Settings Sync ← Server Environment Variables
 - **Backend (Node.js + Express)**: Webhook server hosted on Render
 - **AI Processing**: OpenAI GPT-4 with intelligent fallbacks
 - **SMS Gateway**: OpenPhone API for reliable message delivery
+- **Tech Sheets**: AI-generated repair guides for workshop use
 
 ## 🚀 Quick Start
 
@@ -166,7 +176,15 @@ npm run build
 - Labor rate calculation ($80/hr minimum)
 - Parts cost tracking
 - Quote status management
-- Customer communication
+- Auto tech sheet generation on acceptance
+
+### **Tech Sheets**
+- AI-generated repair guides
+- Step-by-step instructions
+- Tool and parts requirements
+- Safety warnings
+- Professional tips
+- Downloadable formats
 
 ### **Settings**
 - API key configuration
@@ -202,21 +220,21 @@ Response: Scheduling inquiry with availability check promise
 ## 🔍 Monitoring & Health Checks
 
 ### **Server Health**
-- **Endpoint**: `https://your-render-app.onrender.com/health`
+- **Endpoint**: `https://torquegpt.onrender.com/health`
 - **Response**: Server status, timestamp, environment info
 
 ### **Settings API**
-- **Endpoint**: `https://your-render-app.onrender.com/api/settings`
+- **Endpoint**: `https://torquegpt.onrender.com/api/settings`
 - **Response**: API key status, business settings, configuration info
 
 ### **Messages API**
-- **Endpoint**: `https://your-render-app.onrender.com/api/messages`
+- **Endpoint**: `https://torquegpt.onrender.com/api/messages`
 - **Response**: Message history, conversation data
 
 ### **Webhook Testing**
 ```bash
 # Test webhook endpoint
-curl -X POST https://your-render-app.onrender.com/api/webhooks/openphone \
+curl -X POST https://torquegpt.onrender.com/api/webhooks/openphone \
   -H "Content-Type: application/json" \
   -d '{"test": "webhook"}'
 ```
@@ -246,6 +264,12 @@ curl -X POST https://your-render-app.onrender.com/api/webhooks/openphone \
 2. Verify CORS configuration allows frontend domain
 3. Check browser console for API errors
 4. Refresh settings using the refresh button
+
+### **Tech Sheet Generation Failing**
+1. Verify OpenAI API key is configured
+2. Check API credits and rate limits
+3. Monitor browser console for errors
+4. Try with simpler job descriptions
 
 ## 🔐 Security Considerations
 

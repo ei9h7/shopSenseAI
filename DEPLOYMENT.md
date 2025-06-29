@@ -237,9 +237,10 @@ curl -X POST https://torquegpt.onrender.com/api/webhooks/openphone \
 - Vite configuration issues
 
 # Solutions:
+- Ensure Tailwind CSS is in dependencies (not devDependencies)
 - Run npm install locally first
 - Fix TypeScript errors
-- Ensure vite is in devDependencies
+- Ensure vite is in dependencies
 ```
 
 #### **3. Webhook Not Working**
@@ -282,6 +283,21 @@ curl -X POST https://torquegpt.onrender.com/api/webhooks/openphone \
 - Verify API key in OpenPhone dashboard
 - Ensure phone number includes country code (+1)
 - Check API key permissions for SMS sending
+```
+
+#### **6. Tech Sheet Generation Failing**
+```bash
+# Check browser console for errors
+# Common issues:
+- OpenAI API key not configured
+- Rate limits or no credits
+- Network connectivity issues
+
+# Solutions:
+- Configure OpenAI API key in settings
+- Check API usage and credits
+- Try with simpler job descriptions
+- Check browser network tab for errors
 ```
 
 ### **Performance Optimization**
@@ -339,6 +355,8 @@ curl -X POST https://torquegpt.onrender.com/api/webhooks/openphone \
 - [ ] Settings page shows server configuration
 - [ ] Emergency messages trigger alerts
 - [ ] Fallback system works when AI unavailable
+- [ ] Tech sheet generation works
+- [ ] Quote acceptance generates tech sheets
 
 ### **Operational Metrics**
 - **Response Time**: < 5 seconds for AI processing
@@ -362,6 +380,8 @@ curl -X POST https://torquegpt.onrender.com/api/webhooks/openphone \
 - **Multi-Language**: Support for multiple languages
 - **Advanced AI**: Custom fine-tuned models
 - **Mobile App**: Native mobile application
+- **Calendar Integration**: Appointment scheduling
+- **Invoice Generation**: Automated billing
 
 ---
 
