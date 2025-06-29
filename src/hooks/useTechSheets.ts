@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useBusinessSettings } from './useBusinessSettings'
+import type { Quote } from './useQuotes'
 import toast from 'react-hot-toast'
 
 export interface TechSheet {
@@ -18,6 +19,7 @@ export interface TechSheet {
   created_at: string
   generated_by: 'ai' | 'manual'
   source?: 'booking' | 'manual'
+  quote_id?: string
 }
 
 /**
@@ -39,7 +41,7 @@ export const useTechSheets = () => {
   const [techSheets, setTechSheets] = useState<TechSheet[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isGenerating, setIsGenerating] = useState(false)
-  const { settings } = useBusinessSettings()
+  const { settings, serverSettings } = useBusinessSettings()
 
   useEffect(() => {
     loadTechSheets()
@@ -76,19 +78,34 @@ export const useTechSheets = () => {
   }
 
   /**
+   * Gets the effective OpenAI API key (server takes precedence)
+   */
+  const getOpenAIKey = () => {
+    if (serverSettings?.openai_configured) {
+      // Use server-side API for AI processing when key is on server
+      return 'server-configured'
+    }
+    return settings?.openai_api_key
+  }
+
+  /**
    * Generates a tech sheet using AI based on job description
    * 
    * @param jobDescription - Description of the repair job
    * @param vehicleInfo - Optional vehicle information
    * @param customerName - Optional customer name for booking-generated sheets
+   * @param quoteId - Optional quote ID for linking
    * @returns Promise<TechSheet | null> - The generated tech sheet or null if failed
    */
   const generateTechSheet = async (
     jobDescription: string,
     vehicleInfo?: string,
-    customerName?: string
+    customerName?: string,
+    quoteId?: string
   ): Promise<TechSheet | null> => {
-    if (!settings?.openai_api_key) {
+    const apiKey = getOpenAIKey()
+    
+    if (!apiKey) {
       toast.error('OpenAI API key not configured')
       return null
     }
@@ -99,20 +116,44 @@ export const useTechSheets = () => {
         ? `${jobDescription} for ${vehicleInfo}`
         : jobDescription
 
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${settings.openai_api_key}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          temperature: 0.7,
-          max_tokens: 1500,
-          messages: [
-            {
-              role: 'system',
-              content: `You are an expert automotive technician creating detailed repair guides. Generate a comprehensive tech sheet for the given job description. Format your response as JSON with these exact fields:
+      let aiResponse: string
+
+      if (apiKey === 'server-configured') {
+        // Use server-side API when key is configured on server
+        const response = await fetch('https://torquegpt.onrender.com/api/generate-tech-sheet', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            jobDescription: prompt,
+            vehicleInfo,
+            customerName
+          })
+        })
+
+        if (!response.ok) {
+          throw new Error(`Server API error: ${response.status}`)
+        }
+
+        const data = await response.json()
+        aiResponse = data.content
+      } else {
+        // Use client-side API when key is configured locally
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o',
+            temperature: 0.7,
+            max_tokens: 1500,
+            messages: [
+              {
+                role: 'system',
+                content: `You are an expert automotive technician creating detailed repair guides. Generate a comprehensive tech sheet for the given job description. Format your response as JSON with these exact fields:
 
 {
   "title": "Brief descriptive title",
@@ -126,21 +167,22 @@ export const useTechSheets = () => {
 }
 
 Make the instructions detailed and professional for a working mechanic.`
-            },
-            {
-              role: 'user',
-              content: `Generate a detailed tech sheet for this automotive repair job: ${prompt}`
-            }
-          ]
+              },
+              {
+                role: 'user',
+                content: `Generate a detailed tech sheet for this automotive repair job: ${prompt}`
+              }
+            ]
+          })
         })
-      })
 
-      if (!response.ok) {
-        throw new Error(`OpenAI API error: ${response.status}`)
+        if (!response.ok) {
+          throw new Error(`OpenAI API error: ${response.status}`)
+        }
+
+        const data = await response.json()
+        aiResponse = data.choices[0]?.message?.content || ''
       }
-
-      const data = await response.json()
-      const aiResponse = data.choices[0]?.message?.content
 
       if (!aiResponse) {
         throw new Error('No response from AI')
@@ -180,18 +222,19 @@ Make the instructions detailed and professional for a working mechanic.`
         tips: parsedResponse.tips || [],
         created_at: new Date().toISOString(),
         generated_by: 'ai',
-        source: customerName ? 'booking' : 'manual'
+        source: customerName ? 'booking' : 'manual',
+        quote_id: quoteId
       }
 
       // Save to storage
       const updatedSheets = [newTechSheet, ...techSheets]
       saveTechSheets(updatedSheets)
 
-      toast.success('Tech sheet generated successfully!')
+      console.log('✅ Tech sheet generated:', newTechSheet.title)
       return newTechSheet
     } catch (error) {
       console.error('Error generating tech sheet:', error)
-      toast.error('Failed to generate tech sheet')
+      toast.error('Failed to generate tech sheet. Please try again.')
       return null
     } finally {
       setIsGenerating(false)
@@ -200,11 +243,24 @@ Make the instructions detailed and professional for a working mechanic.`
 
   /**
    * Auto-generates a tech sheet from an accepted quote
-   * This would be called when a quote is accepted and becomes a booking
+   * This is called when a quote is accepted and becomes a booking
    */
-  const generateFromQuote = async (quote: any): Promise<TechSheet | null> => {
-    const jobDescription = `${quote.description} for ${quote.vehicle_info}`
-    return generateTechSheet(jobDescription, quote.vehicle_info, quote.customer_name)
+  const generateFromQuote = async (quote: Quote): Promise<TechSheet | null> => {
+    console.log('🔧 Generating tech sheet from quote:', quote.id)
+    
+    const jobDescription = `${quote.description}`
+    const result = await generateTechSheet(
+      jobDescription, 
+      quote.vehicle_info, 
+      quote.customer_name,
+      quote.id
+    )
+    
+    if (result) {
+      console.log('✅ Tech sheet generated from quote successfully')
+    }
+    
+    return result
   }
 
   /**
@@ -225,9 +281,23 @@ Make the instructions detailed and professional for a working mechanic.`
       manual: techSheets.filter(s => s.source === 'manual').length,
       fromBookings: techSheets.filter(s => s.source === 'booking').length,
       avgTime: techSheets.length > 0 
-        ? techSheets.reduce((sum, s) => sum + s.estimated_time, 0) / techSheets.length 
+        ? Math.round((techSheets.reduce((sum, s) => sum + s.estimated_time, 0) / techSheets.length) * 10) / 10
         : 0
     }
+  }
+
+  /**
+   * Gets tech sheets for a specific quote
+   */
+  const getTechSheetsForQuote = (quoteId: string) => {
+    return techSheets.filter(sheet => sheet.quote_id === quoteId)
+  }
+
+  /**
+   * Checks if API key is available for tech sheet generation
+   */
+  const canGenerateTechSheets = () => {
+    return !!(serverSettings?.openai_configured || (settings?.openai_api_key && settings.openai_api_key.length > 10))
   }
 
   return {
@@ -238,6 +308,8 @@ Make the instructions detailed and professional for a working mechanic.`
     generateFromQuote,
     deleteTechSheet,
     getTechSheetStats,
+    getTechSheetsForQuote,
+    canGenerateTechSheets,
     refreshTechSheets: loadTechSheets
   }
 }

@@ -4,6 +4,7 @@ import express from 'express';
 import cors from 'cors';
 import { handleOpenPhoneWebhook } from './webhooks/openphone.js';
 import { messageProcessor } from './services/messageProcessor.js';
+import { OpenAIService } from './services/openai.js';
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -39,7 +40,8 @@ app.get('/', (req, res) => {
             health: '/health',
             webhook: '/api/webhooks/openphone',
             messages: '/api/messages',
-            settings: '/api/settings'
+            settings: '/api/settings',
+            techSheet: '/api/generate-tech-sheet'
         }
     });
 });
@@ -63,6 +65,76 @@ app.get('/api/settings', (req, res) => {
     catch (error) {
         console.error('Error fetching settings:', error);
         res.status(500).json({ error: 'Failed to fetch settings' });
+    }
+});
+
+// Tech Sheet Generation API endpoint
+app.post('/api/generate-tech-sheet', async (req, res) => {
+    try {
+        const { jobDescription, vehicleInfo, customerName } = req.body;
+        
+        if (!jobDescription) {
+            return res.status(400).json({ error: 'Job description is required' });
+        }
+        
+        if (!process.env.OPENAI_API_KEY) {
+            return res.status(500).json({ error: 'OpenAI API key not configured on server' });
+        }
+        
+        console.log('🔧 Generating tech sheet via server API...');
+        
+        const openAI = new OpenAIService(process.env.OPENAI_API_KEY);
+        const prompt = vehicleInfo ? `${jobDescription} for ${vehicleInfo}` : jobDescription;
+        
+        // Use a specialized prompt for tech sheet generation
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: 'gpt-4o',
+                temperature: 0.7,
+                max_tokens: 1500,
+                messages: [
+                    {
+                        role: 'system',
+                        content: `You are an expert automotive technician creating detailed repair guides. Generate a comprehensive tech sheet for the given job description. Format your response as JSON with these exact fields:
+
+{
+  "title": "Brief descriptive title",
+  "estimated_time": number (hours as decimal),
+  "difficulty": "Easy|Medium|Hard",
+  "tools_required": ["tool1", "tool2"],
+  "parts_needed": ["part1", "part2"],
+  "safety_warnings": ["warning1", "warning2"],
+  "step_by_step": ["step1", "step2", "step3"],
+  "tips": ["tip1", "tip2"]
+}
+
+Make the instructions detailed and professional for a working mechanic.`
+                    },
+                    {
+                        role: 'user',
+                        content: `Generate a detailed tech sheet for this automotive repair job: ${prompt}`
+                    }
+                ]
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`OpenAI API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        const content = data.choices[0]?.message?.content || '';
+        
+        console.log('✅ Tech sheet generated successfully via server');
+        res.json({ content });
+    } catch (error) {
+        console.error('❌ Error generating tech sheet:', error);
+        res.status(500).json({ error: 'Failed to generate tech sheet' });
     }
 });
 
@@ -170,6 +242,7 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
     console.log(`🏥 Health check: https://torquegpt.onrender.com/health`);
     console.log(`📨 Messages API: https://torquegpt.onrender.com/api/messages`);
     console.log(`⚙️  Settings API: https://torquegpt.onrender.com/api/settings`);
+    console.log(`🔧 Tech Sheet API: https://torquegpt.onrender.com/api/generate-tech-sheet`);
     console.log(`✅ TorqueSheetGPT webhook server deployed successfully!`);
     
     // Initialize messageProcessor on startup
