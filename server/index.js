@@ -5,22 +5,24 @@ import cors from 'cors';
 import { handleOpenPhoneWebhook } from './webhooks/openphone.js';
 import { messageProcessor } from './services/messageProcessor.js';
 const app = express();
-const PORT = process.env.PORT || 3001;
-// Middleware
+const PORT = process.env.PORT || 10000;
+// Middleware with size limits for Render
 app.use(cors({
     origin: process.env.NODE_ENV === 'production'
         ? ['https://clinquant-starship-25fe89.netlify.app']
         : ['http://localhost:5173'],
     credentials: true
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-// Health check endpoint
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+// Health check endpoint - optimized for Render
 app.get('/health', (req, res) => {
-    res.json({
+    res.status(200).json({
         status: 'ok',
         timestamp: new Date().toISOString(),
-        environment: process.env.NODE_ENV || 'development'
+        environment: process.env.NODE_ENV || 'development',
+        uptime: process.uptime(),
+        memory: process.memoryUsage()
     });
 });
 // Root endpoint
@@ -28,12 +30,35 @@ app.get('/', (req, res) => {
     res.json({
         name: 'TorqueSheetGPT Webhook Server',
         version: '1.0.0',
+        status: 'running',
         endpoints: {
             health: '/health',
             webhook: '/api/webhooks/openphone',
-            messages: '/api/messages'
+            messages: '/api/messages',
+            settings: '/api/settings'
         }
     });
+});
+// Settings API endpoint
+app.get('/api/settings', (req, res) => {
+    try {
+        const settings = {
+            openai_configured: !!(process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.length > 10),
+            openphone_configured: !!(process.env.OPENPHONE_API_KEY && process.env.OPENPHONE_API_KEY.length > 10),
+            business_name: process.env.BUSINESS_NAME || 'Pink Chicken Speed Shop',
+            labor_rate: parseInt(process.env.LABOR_RATE || '80'),
+            dnd_enabled: process.env.DND_ENABLED === 'true',
+            openai_key_preview: process.env.OPENAI_API_KEY ?
+                `••••••••${process.env.OPENAI_API_KEY.slice(-4)}` : undefined,
+            openphone_key_preview: process.env.OPENPHONE_API_KEY ?
+                `••••••••${process.env.OPENPHONE_API_KEY.slice(-4)}` : undefined
+        };
+        res.json(settings);
+    }
+    catch (error) {
+        console.error('Error fetching settings:', error);
+        res.status(500).json({ error: 'Failed to fetch settings' });
+    }
 });
 // Messages API endpoint
 app.get('/api/messages', async (req, res) => {
@@ -87,19 +112,27 @@ app.use((err, req, res, next) => {
 app.use('*', (req, res) => {
     res.status(404).json({ error: 'Endpoint not found' });
 });
-// Start server
-app.listen(PORT, () => {
+// Graceful shutdown handling for Render
+process.on('SIGTERM', () => {
+    console.log('🛑 SIGTERM received, shutting down gracefully...');
+    process.exit(0);
+});
+process.on('SIGINT', () => {
+    console.log('🛑 SIGINT received, shutting down gracefully...');
+    process.exit(0);
+});
+// Start server - CRITICAL: Bind to 0.0.0.0 for Render
+const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Webhook server running on port ${PORT}`);
-    // Show the correct URLs based on environment
-    const baseUrl = process.env.NODE_ENV === 'production'
-        ? 'https://torquegpt.onrender.com' // Your actual Render URL
-        : `http://localhost:${PORT}`;
-    console.log(`📡 OpenPhone webhook URL: ${baseUrl}/api/webhooks/openphone`);
-    console.log(`🏥 Health check: ${baseUrl}/health`);
-    console.log(`📨 Messages API: ${baseUrl}/api/messages`);
-    if (process.env.NODE_ENV === 'production') {
-        console.log(`✅ TorqueSheetGPT webhook server deployed successfully!`);
-        console.log(`🔗 Use this webhook URL in OpenPhone: ${baseUrl}/api/webhooks/openphone`);
-    }
+    console.log(`📡 OpenPhone webhook URL: https://torquegpt.onrender.com/api/webhooks/openphone`);
+    console.log(`🏥 Health check: https://torquegpt.onrender.com/health`);
+    console.log(`📨 Messages API: https://torquegpt.onrender.com/api/messages`);
+    console.log(`⚙️  Settings API: https://torquegpt.onrender.com/api/settings`);
+    console.log(`✅ TorqueSheetGPT webhook server deployed successfully!`);
+});
+// Handle server errors
+server.on('error', (error) => {
+    console.error('❌ Server error:', error);
+    process.exit(1);
 });
 export default app;
