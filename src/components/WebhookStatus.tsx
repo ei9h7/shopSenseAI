@@ -56,7 +56,7 @@ const WebhookStatus: React.FC = () => {
         <button
           onClick={checkServerStatus}
           disabled={isChecking}
-          className="text-sm text-primary-600 hover:text-primary-700"
+          className="text-sm text-primary-600 hover:text-primary-700 disabled:opacity-50"
         >
           {isChecking ? 'Checking...' : 'Refresh Status'}
         </button>

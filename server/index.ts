@@ -4,13 +4,14 @@ dotenv.config()
 import express from 'express'
 import cors from 'cors'
 import { handleOpenPhoneWebhook } from './webhooks/openphone.js'
+import { messageProcessor } from './services/messageProcessor.js'
 
 const app = express()
 const PORT = process.env.PORT || 3001
 
 // Middleware
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
+  origin: process.env.NODE_ENV === 'production'
     ? ['https://clinquant-starship-25fe89.netlify.app']
     : ['http://localhost:5173'],
   credentials: true
@@ -20,8 +21,8 @@ app.use(express.urlencoded({ extended: true }))
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development'
   })
@@ -34,9 +35,53 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     endpoints: {
       health: '/health',
-      webhook: '/api/webhooks/openphone'
+      webhook: '/api/webhooks/openphone',
+      messages: '/api/messages'
     }
   })
+})
+
+// Messages API endpoint
+app.get('/api/messages', async (req, res) => {
+  try {
+    await messageProcessor.initialize()
+    const messages = messageProcessor.getMessages()
+    res.json({ messages })
+  } catch (error) {
+    console.error('Error fetching messages:', error)
+    res.status(500).json({ error: 'Failed to fetch messages' })
+  }
+})
+
+// Mark message as read
+app.post('/api/messages/:id/read', async (req, res) => {
+  try {
+    const { id } = req.params
+    await messageProcessor.initialize()
+    messageProcessor.markMessageAsRead(id)
+    res.json({ success: true })
+  } catch (error) {
+    console.error('Error marking message as read:', error)
+    res.status(500).json({ error: 'Failed to mark message as read' })
+  }
+})
+
+// Send manual reply
+app.post('/api/messages/reply', async (req, res) => {
+  try {
+    const { phoneNumber, message } = req.body
+    
+    if (!phoneNumber || !message) {
+      return res.status(400).json({ error: 'Phone number and message are required' })
+    }
+    
+    await messageProcessor.initialize()
+    await messageProcessor.sendManualReply(phoneNumber, message)
+    res.json({ success: true })
+  } catch (error) {
+    console.error('Error sending manual reply:', error)
+    res.status(500).json({ error: 'Failed to send reply' })
+  }
 })
 
 // OpenPhone webhook endpoint
@@ -64,6 +109,7 @@ app.listen(PORT, () => {
   
   console.log(`📡 OpenPhone webhook URL: ${baseUrl}/api/webhooks/openphone`)
   console.log(`🏥 Health check: ${baseUrl}/health`)
+  console.log(`📨 Messages API: ${baseUrl}/api/messages`)
   
   if (process.env.NODE_ENV === 'production') {
     console.log(`✅ TorqueSheetGPT webhook server deployed successfully!`)

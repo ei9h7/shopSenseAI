@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react'
 import type { Message } from '../types'
 
+const API_BASE_URL = import.meta.env.DEV 
+  ? 'http://localhost:3001'
+  : 'https://torquegpt.onrender.com'
+
 export const useMessages = () => {
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -15,18 +19,31 @@ export const useMessages = () => {
     return () => clearInterval(interval)
   }, [])
 
-  const loadMessages = () => {
+  const loadMessages = async () => {
     try {
+      // First try to load from server
+      const response = await fetch(`${API_BASE_URL}/api/messages`)
+      if (response.ok) {
+        const data = await response.json()
+        setMessages(data.messages || [])
+      } else {
+        // Fallback to localStorage if server is unavailable
+        const savedMessages = localStorage.getItem('messages')
+        if (savedMessages) {
+          setMessages(JSON.parse(savedMessages))
+        } else {
+          setMessages([])
+        }
+      }
+    } catch (error) {
+      console.error('Error loading messages from server, using localStorage:', error)
+      // Fallback to localStorage
       const savedMessages = localStorage.getItem('messages')
       if (savedMessages) {
-        const parsedMessages = JSON.parse(savedMessages)
-        setMessages(parsedMessages)
+        setMessages(JSON.parse(savedMessages))
       } else {
         setMessages([])
       }
-    } catch (error) {
-      console.error('Error loading messages:', error)
-      setMessages([])
     } finally {
       setIsLoading(false)
     }
@@ -35,22 +52,36 @@ export const useMessages = () => {
   const sendMessage = async ({ phoneNumber, message }: { phoneNumber: string; message: string }) => {
     setIsSending(true)
     try {
-      const newMessage: Message = {
-        id: Date.now().toString(),
-        phone_number: phoneNumber,
-        body: message,
-        direction: 'outbound',
-        timestamp: new Date().toISOString(),
-        processed: true,
-        created_at: new Date().toISOString()
-      }
+      // Try to send via server first
+      const response = await fetch(`${API_BASE_URL}/api/messages/reply`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ phoneNumber, message }),
+      })
 
-      const updatedMessages = [newMessage, ...messages]
-      setMessages(updatedMessages)
-      localStorage.setItem('messages', JSON.stringify(updatedMessages))
-      
-      // TODO: Actually send via OpenPhone API when implemented
-      console.log('Message sent:', newMessage)
+      if (response.ok) {
+        // Refresh messages after sending
+        await loadMessages()
+      } else {
+        // Fallback: just add to localStorage
+        const newMessage: Message = {
+          id: Date.now().toString(),
+          phone_number: phoneNumber,
+          body: message,
+          direction: 'outbound',
+          timestamp: new Date().toISOString(),
+          processed: true,
+          created_at: new Date().toISOString()
+        }
+
+        const updatedMessages = [newMessage, ...messages]
+        setMessages(updatedMessages)
+        localStorage.setItem('messages', JSON.stringify(updatedMessages))
+        
+        throw new Error('Server unavailable - message saved locally only')
+      }
     } catch (error) {
       console.error('Error sending message:', error)
       throw error
@@ -59,7 +90,17 @@ export const useMessages = () => {
     }
   }
 
-  const markAsRead = (messageId: string) => {
+  const markAsRead = async (messageId: string) => {
+    try {
+      // Try to mark as read on server
+      await fetch(`${API_BASE_URL}/api/messages/${messageId}/read`, {
+        method: 'POST',
+      })
+    } catch (error) {
+      console.error('Error marking message as read on server:', error)
+    }
+
+    // Update local state regardless
     const updatedMessages = messages.map(msg => 
       msg.id === messageId ? { ...msg, read: true } : msg
     )

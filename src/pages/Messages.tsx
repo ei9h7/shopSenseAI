@@ -79,7 +79,7 @@ const Messages: React.FC = () => {
               <div className="mt-2 text-sm text-yellow-700">
                 <p>
                   To receive and respond to messages, please configure your API keys in the{' '}
-                  <a href="/settings" className="font-medium underline">
+                  <a href="/settings" className="font-medium underline hover:text-yellow-900">
                     Settings page
                   </a>.
                 </p>

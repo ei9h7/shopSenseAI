@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   CheckCircle
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import DashboardCard from '../components/DashboardCard'
 import DoNotDisturbToggle from '../components/DoNotDisturbToggle'
 import { useMessages } from '../hooks/useMessages'
@@ -77,9 +78,9 @@ const Dashboard: React.FC = () => {
               <div className="mt-2 text-sm text-red-700">
                 <p>
                   You have urgent messages that require immediate attention.{' '}
-                  <a href="/messages" className="font-medium underline">
+                  <Link to="/messages" className="font-medium underline hover:text-red-900">
                     View emergency messages →
-                  </a>
+                  </Link>
                 </p>
               </div>
             </div>
@@ -171,27 +172,27 @@ const Dashboard: React.FC = () => {
             Quick Actions
           </h3>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <a
-              href="/messages"
+            <Link
+              to="/messages"
               className="flex items-center justify-center px-4 py-3 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
             >
               <MessageSquare className="h-5 w-5 mr-2" />
               View Messages
-            </a>
-            <a
-              href="/quotes"
+            </Link>
+            <Link
+              to="/quotes"
               className="flex items-center justify-center px-4 py-3 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
             >
               <FileText className="h-5 w-5 mr-2" />
               Create Quote
-            </a>
-            <a
-              href="/settings"
+            </Link>
+            <Link
+              to="/settings"
               className="flex items-center justify-center px-4 py-3 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
             >
               <Clock className="h-5 w-5 mr-2" />
               Settings
-            </a>
+            </Link>
           </div>
         </div>
       </div>
