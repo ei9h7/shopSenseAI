@@ -1,15 +1,31 @@
 import React, { useState } from 'react'
-import { FileText, Plus, Eye, Send, Check, X } from 'lucide-react'
+import { FileText, Plus, Eye, Send, Check, X, ClipboardList } from 'lucide-react'
 import { useQuotes, type Quote } from '../hooks/useQuotes'
 import { useBusinessSettings } from '../hooks/useBusinessSettings'
+import { useTechSheets } from '../hooks/useTechSheets'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
 
+/**
+ * Quotes Component
+ * 
+ * Manages service quotes with integration to tech sheet generation.
+ * When quotes are accepted, they can automatically generate tech sheets
+ * for the repair work. Features include:
+ * 
+ * - Quote creation with labor and parts calculation
+ * - Status management (draft, sent, accepted, declined)
+ * - Auto-generation of tech sheets from accepted quotes
+ * - Professional quote formatting and tracking
+ * - Integration with business settings for labor rates
+ */
 const Quotes: React.FC = () => {
   const { quotes, isLoading, createQuote, updateQuoteStatus } = useQuotes()
   const { settings } = useBusinessSettings()
+  const { generateFromQuote } = useTechSheets()
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null)
+  const [isGeneratingTechSheet, setIsGeneratingTechSheet] = useState(false)
 
   const [formData, setFormData] = useState({
     customer_name: '',
@@ -45,9 +61,36 @@ const Quotes: React.FC = () => {
     toast.success('Quote created successfully')
   }
 
-  const handleStatusUpdate = (quoteId: string, status: Quote['status']) => {
+  /**
+   * Handles quote status updates and auto-generates tech sheets for accepted quotes
+   */
+  const handleStatusUpdate = async (quoteId: string, status: Quote['status']) => {
     updateQuoteStatus(quoteId, status)
-    toast.success(`Quote ${status}`)
+    
+    // Auto-generate tech sheet when quote is accepted
+    if (status === 'accepted') {
+      const quote = quotes.find(q => q.id === quoteId)
+      if (quote && settings?.openai_api_key) {
+        setIsGeneratingTechSheet(true)
+        try {
+          const techSheet = await generateFromQuote(quote)
+          if (techSheet) {
+            toast.success(`Quote accepted! Tech sheet "${techSheet.title}" generated automatically.`)
+          } else {
+            toast.success('Quote accepted!')
+          }
+        } catch (error) {
+          console.error('Error generating tech sheet:', error)
+          toast.success('Quote accepted! (Tech sheet generation failed)')
+        } finally {
+          setIsGeneratingTechSheet(false)
+        }
+      } else {
+        toast.success('Quote accepted!')
+      }
+    } else {
+      toast.success(`Quote ${status}`)
+    }
   }
 
   const getStatusColor = (status: Quote['status']) => {
@@ -85,6 +128,48 @@ const Quotes: React.FC = () => {
           New Quote
         </button>
       </div>
+
+      {/* Auto Tech Sheet Generation Notice */}
+      {settings?.openai_api_key && (
+        <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <ClipboardList className="h-5 w-5 text-blue-400" />
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-blue-800">
+                Auto Tech Sheet Generation Enabled
+              </h3>
+              <div className="mt-2 text-sm text-blue-700">
+                <p>
+                  When quotes are accepted, tech sheets will be automatically generated to help with the repair work.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tech Sheet Generation Loading */}
+      {isGeneratingTechSheet && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-yellow-600"></div>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-yellow-800">
+                Generating Tech Sheet...
+              </h3>
+              <div className="mt-2 text-sm text-yellow-700">
+                <p>
+                  Creating a detailed technical guide for this repair job.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create Quote Modal */}
       {showCreateForm && (
@@ -128,6 +213,7 @@ const Quotes: React.FC = () => {
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     rows={3}
                     className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                    placeholder="Describe the repair work needed..."
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -161,6 +247,14 @@ const Quotes: React.FC = () => {
                     <p className="font-medium">Total: ${(formData.labor_hours * (settings?.labor_rate || 80) + formData.parts_cost).toFixed(2)}</p>
                   </div>
                 </div>
+                {settings?.openai_api_key && (
+                  <div className="bg-blue-50 p-3 rounded-md">
+                    <p className="text-sm text-blue-800">
+                      <ClipboardList className="h-4 w-4 inline mr-1" />
+                      A tech sheet will be automatically generated when this quote is accepted.
+                    </p>
+                  </div>
+                )}
               </div>
               <div className="flex justify-end space-x-2 mt-6">
                 <button
@@ -203,6 +297,12 @@ const Quotes: React.FC = () => {
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(quote.status)}`}>
                           {quote.status}
                         </span>
+                        {quote.status === 'accepted' && settings?.openai_api_key && (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                            <ClipboardList className="h-3 w-3 mr-1" />
+                            Tech Sheet Available
+                          </span>
+                        )}
                       </div>
                       <p className="text-sm text-gray-600 mb-1">{quote.vehicle_info}</p>
                       <p className="text-sm text-gray-600 mb-2">{quote.description}</p>
@@ -233,7 +333,8 @@ const Quotes: React.FC = () => {
                         <>
                           <button
                             onClick={() => handleStatusUpdate(quote.id, 'accepted')}
-                            className="inline-flex items-center px-3 py-1 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700"
+                            disabled={isGeneratingTechSheet}
+                            className="inline-flex items-center px-3 py-1 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
                           >
                             <Check className="h-4 w-4 mr-1" />
                             Accept
@@ -292,6 +393,14 @@ const Quotes: React.FC = () => {
                     </div>
                   </div>
                 </div>
+                {selectedQuote.status === 'accepted' && settings?.openai_api_key && (
+                  <div className="bg-green-50 p-3 rounded-md">
+                    <p className="text-sm text-green-800">
+                      <ClipboardList className="h-4 w-4 inline mr-1" />
+                      Tech sheet has been generated for this job. Check the Tech Sheets page.
+                    </p>
+                  </div>
+                )}
               </div>
               <div className="flex justify-end mt-6">
                 <button
