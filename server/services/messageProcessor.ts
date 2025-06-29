@@ -89,26 +89,50 @@ export class MessageProcessor {
       // Process with AI if services are available
       if (this.openAI && this.openPhone && this.settings) {
         console.log('🤖 Processing with AI...')
-        const aiResponse = await this.openAI.processMessage(
-          messageBody, 
-          this.settings.business_name
-        )
+        
+        try {
+          const aiResponse = await this.openAI.processMessage(
+            messageBody, 
+            this.settings.business_name
+          )
 
-        console.log('🎯 AI Response:', aiResponse)
+          console.log('🎯 AI Response:', aiResponse)
 
-        // Check if it's an emergency
-        if (this.isEmergency(aiResponse.intent)) {
-          console.log('🚨 Emergency detected!')
-          await this.sendResponse(phoneNumber, aiResponse, message.id)
-        } else {
+          // Check if it's an emergency
+          if (this.isEmergency(aiResponse.intent)) {
+            console.log('🚨 Emergency detected!')
+          }
+          
           // Send AI response
           await this.sendResponse(phoneNumber, aiResponse, message.id)
+        } catch (aiError) {
+          console.error('❌ AI processing failed:', aiError)
+          
+          // Send a simple fallback response
+          const fallbackResponse: AIResponse = {
+            reply: "Thanks for your message! I received it and will get back to you soon. If this is urgent, please call me directly.",
+            intent: "Fallback",
+            action: "Manual review needed"
+          }
+          
+          await this.sendResponse(phoneNumber, fallbackResponse, message.id)
         }
       } else {
         console.warn('⚠️  AI services not available - message stored only')
       }
     } catch (error) {
       console.error('❌ Error processing message:', error)
+      
+      // Try to send a basic acknowledgment even if processing fails
+      if (this.openPhone) {
+        try {
+          await this.openPhone.sendSMS(phoneNumber, "Message received. I'll get back to you soon!")
+          console.log('✅ Sent basic acknowledgment')
+        } catch (smsError) {
+          console.error('❌ Failed to send acknowledgment:', smsError)
+        }
+      }
+      
       throw error
     }
   }

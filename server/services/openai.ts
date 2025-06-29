@@ -36,24 +36,75 @@ export class OpenAIService {
       const response = await axios.post(
         OPENAI_API_URL,
         {
-          model: 'gpt-4o',
+          model: 'gpt-4o-mini', // Use cheaper model to avoid rate limits
           temperature: 0.6,
+          max_tokens: 500, // Limit response length
           messages
         },
         {
           headers: {
             'Authorization': `Bearer ${this.apiKey}`,
             'Content-Type': 'application/json'
-          }
+          },
+          timeout: 30000 // 30 second timeout
         }
       )
 
       const fullResponse = response.data?.choices?.[0]?.message?.content || ''
       
       return this.parseAIResponse(fullResponse)
-    } catch (error) {
-      console.error('OpenAI API Error:', error)
+    } catch (error: any) {
+      console.error('OpenAI API Error:', error.response?.status, error.response?.data)
+      
+      // Handle rate limiting
+      if (error.response?.status === 429) {
+        console.log('⚠️  Rate limit hit, using fallback response')
+        return this.getFallbackResponse(messageBody)
+      }
+      
+      // Handle other API errors
+      if (error.response?.status >= 400) {
+        console.log('⚠️  API error, using fallback response')
+        return this.getFallbackResponse(messageBody)
+      }
+      
       throw new Error('Failed to process message with AI')
+    }
+  }
+
+  private getFallbackResponse(messageBody: string): AIResponse {
+    // Simple fallback logic when AI is unavailable
+    const lowerMessage = messageBody.toLowerCase()
+    
+    if (lowerMessage.includes('emergency') || lowerMessage.includes('urgent') || lowerMessage.includes('breakdown')) {
+      return {
+        reply: "Thanks for reaching out! This sounds urgent. I'll get back to you as soon as possible. If this is an emergency, please call me directly.",
+        intent: "Emergency",
+        action: "Priority response needed"
+      }
+    }
+    
+    if (lowerMessage.includes('oil change') || lowerMessage.includes('service') || lowerMessage.includes('maintenance')) {
+      return {
+        reply: "Hi! Thanks for your message about service. I'd be happy to help with your vehicle maintenance. My rate is $80/hr with a 1-hour minimum. Can you tell me more about what you need?",
+        intent: "Service Request",
+        action: "Quote requested"
+      }
+    }
+    
+    if (lowerMessage.includes('quote') || lowerMessage.includes('price') || lowerMessage.includes('cost')) {
+      return {
+        reply: "Thanks for reaching out! I'd be happy to provide a quote. My labor rate is $80/hr with a 1-hour minimum. Can you provide more details about the work needed?",
+        intent: "Quote Request",
+        action: "More info needed"
+      }
+    }
+    
+    // Default response
+    return {
+      reply: "Hi! Thanks for your message. I'm Pink Chicken Speed Shop and I'd be happy to help with your automotive needs. My rate is $80/hr. What can I help you with today?",
+      intent: "General Inquiry",
+      action: "Initial contact"
     }
   }
 
