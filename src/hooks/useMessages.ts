@@ -1,59 +1,36 @@
 import { useState, useEffect } from 'react'
 import type { Message } from '../types'
 
-// Mock messages data
-const mockMessages: Message[] = [
-  {
-    id: '1',
-    phone_number: '+1234567890',
-    body: 'Hi, my car is making a strange noise when I brake. Can you take a look?',
-    direction: 'inbound',
-    timestamp: new Date(Date.now() - 300000).toISOString(), // 5 minutes ago
-    processed: true,
-    ai_response: 'Thanks for reaching out! Brake noise can indicate several issues. I can take a look - would you like to schedule an inspection? My rate is $80/hr with a 1-hour minimum.',
-    intent: 'Service Request',
-    action: 'Quote provided',
-    created_at: new Date(Date.now() - 300000).toISOString()
-  },
-  {
-    id: '2',
-    phone_number: '+1234567890',
-    body: 'Thanks for reaching out! Brake noise can indicate several issues. I can take a look - would you like to schedule an inspection? My rate is $80/hr with a 1-hour minimum.',
-    direction: 'outbound',
-    timestamp: new Date(Date.now() - 240000).toISOString(), // 4 minutes ago
-    processed: true,
-    created_at: new Date(Date.now() - 240000).toISOString()
-  },
-  {
-    id: '3',
-    phone_number: '+1987654321',
-    body: 'EMERGENCY! My car broke down on Highway 1. Engine is smoking!',
-    direction: 'inbound',
-    timestamp: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
-    processed: true,
-    ai_response: 'This sounds like an emergency! Please pull over safely and turn off the engine immediately. I can arrange emergency roadside assistance. Are you in a safe location?',
-    intent: 'Emergency',
-    action: 'Emergency response sent',
-    created_at: new Date(Date.now() - 3600000).toISOString()
-  }
-]
-
 export const useMessages = () => {
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSending, setIsSending] = useState(false)
 
   useEffect(() => {
-    // Load messages from localStorage or use mock data
-    const savedMessages = localStorage.getItem('messages')
-    if (savedMessages) {
-      setMessages(JSON.parse(savedMessages))
-    } else {
-      setMessages(mockMessages)
-      localStorage.setItem('messages', JSON.stringify(mockMessages))
-    }
-    setIsLoading(false)
+    loadMessages()
+    
+    // Set up polling to check for new messages every 5 seconds
+    const interval = setInterval(loadMessages, 5000)
+    
+    return () => clearInterval(interval)
   }, [])
+
+  const loadMessages = () => {
+    try {
+      const savedMessages = localStorage.getItem('messages')
+      if (savedMessages) {
+        const parsedMessages = JSON.parse(savedMessages)
+        setMessages(parsedMessages)
+      } else {
+        setMessages([])
+      }
+    } catch (error) {
+      console.error('Error loading messages:', error)
+      setMessages([])
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const sendMessage = async ({ phoneNumber, message }: { phoneNumber: string; message: string }) => {
     setIsSending(true)
@@ -62,20 +39,43 @@ export const useMessages = () => {
         id: Date.now().toString(),
         phone_number: phoneNumber,
         body: message,
-        direction: 'inbound',
+        direction: 'outbound',
         timestamp: new Date().toISOString(),
-        processed: false,
+        processed: true,
         created_at: new Date().toISOString()
       }
 
       const updatedMessages = [newMessage, ...messages]
       setMessages(updatedMessages)
       localStorage.setItem('messages', JSON.stringify(updatedMessages))
+      
+      // TODO: Actually send via OpenPhone API when implemented
+      console.log('Message sent:', newMessage)
     } catch (error) {
       console.error('Error sending message:', error)
+      throw error
     } finally {
       setIsSending(false)
     }
+  }
+
+  const markAsRead = (messageId: string) => {
+    const updatedMessages = messages.map(msg => 
+      msg.id === messageId ? { ...msg, read: true } : msg
+    )
+    setMessages(updatedMessages)
+    localStorage.setItem('messages', JSON.stringify(updatedMessages))
+  }
+
+  const getUnreadCount = () => {
+    return messages.filter(msg => msg.direction === 'inbound' && !msg.read).length
+  }
+
+  const getEmergencyMessages = () => {
+    return messages.filter(msg => 
+      msg.intent?.toLowerCase().includes('emergency') && 
+      msg.direction === 'inbound'
+    )
   }
 
   return {
@@ -83,6 +83,10 @@ export const useMessages = () => {
     isLoading,
     error: null,
     sendMessage,
-    isSending
+    isSending,
+    markAsRead,
+    getUnreadCount,
+    getEmergencyMessages,
+    refreshMessages: loadMessages
   }
 }
