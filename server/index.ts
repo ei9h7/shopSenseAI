@@ -16,17 +16,15 @@ app.use(cors({
     : ['http://localhost:5173'],
   credentials: true
 }))
-app.use(express.json({ limit: '10mb' }))
-app.use(express.urlencoded({ extended: true, limit: '10mb' }))
+app.use(express.json({ limit: '1mb' }))
+app.use(express.urlencoded({ extended: true, limit: '1mb' }))
 
 // Health check endpoint - must respond quickly for Render
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development',
-    uptime: process.uptime(),
-    memory: process.memoryUsage()
+    environment: process.env.NODE_ENV || 'development'
   })
 })
 
@@ -45,7 +43,7 @@ app.get('/', (req, res) => {
   })
 })
 
-// Settings API endpoint (NEW)
+// Settings API endpoint
 app.get('/api/settings', (req, res) => {
   try {
     const settings = {
@@ -136,32 +134,13 @@ process.on('SIGINT', () => {
 })
 
 // Start server - bind to 0.0.0.0 for Render
-const server = app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Webhook server running on port ${PORT}`)
-  
-  // Show the correct URLs based on environment
-  const baseUrl = process.env.NODE_ENV === 'production' 
-    ? 'https://torquegpt.onrender.com'  // Your actual Render URL
-    : `http://localhost:${PORT}`
-  
-  console.log(`📡 OpenPhone webhook URL: ${baseUrl}/api/webhooks/openphone`)
-  console.log(`🏥 Health check: ${baseUrl}/health`)
-  console.log(`📨 Messages API: ${baseUrl}/api/messages`)
-  console.log(`⚙️  Settings API: ${baseUrl}/api/settings`)
-  
-  if (process.env.NODE_ENV === 'production') {
-    console.log(`✅ TorqueSheetGPT webhook server deployed successfully!`)
-    console.log(`🔗 Use this webhook URL in OpenPhone: ${baseUrl}/api/webhooks/openphone`)
-  }
-})
-
-// Handle server errors
-server.on('error', (error: any) => {
-  console.error('❌ Server error:', error)
-  if (error.code === 'EADDRINUSE') {
-    console.error(`Port ${PORT} is already in use`)
-    process.exit(1)
-  }
+  console.log(`📡 OpenPhone webhook URL: https://torquegpt.onrender.com/api/webhooks/openphone`)
+  console.log(`🏥 Health check: https://torquegpt.onrender.com/health`)
+  console.log(`📨 Messages API: https://torquegpt.onrender.com/api/messages`)
+  console.log(`⚙️  Settings API: https://torquegpt.onrender.com/api/settings`)
+  console.log(`✅ TorqueSheetGPT webhook server deployed successfully!`)
 })
 
 export default app
