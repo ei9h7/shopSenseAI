@@ -52,3 +52,13 @@ export interface Quote {
   created_at: string
   expires_at: string
 }
+
+export interface ServerSettings {
+  openai_configured: boolean
+  openphone_configured: boolean
+  business_name: string
+  labor_rate: number
+  dnd_enabled: boolean
+  openai_key_preview?: string
+  openphone_key_preview?: string
+}

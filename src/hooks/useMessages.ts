@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import type { Message } from '../types'
+import toast from 'react-hot-toast'
 
-const API_BASE_URL = import.meta.env.DEV 
-  ? 'http://localhost:3001'
-  : 'https://torquegpt.onrender.com'
+// Production API base URL (no more localhost)
+const API_BASE_URL = 'https://torquegpt.onrender.com'
 
 export const useMessages = () => {
   const [messages, setMessages] = useState<Message[]>([])
@@ -21,7 +21,7 @@ export const useMessages = () => {
 
   const loadMessages = async () => {
     try {
-      // First try to load from server
+      // Try to load from server first
       const response = await fetch(`${API_BASE_URL}/api/messages`)
       if (response.ok) {
         const data = await response.json()
@@ -52,7 +52,7 @@ export const useMessages = () => {
   const sendMessage = async ({ phoneNumber, message }: { phoneNumber: string; message: string }) => {
     setIsSending(true)
     try {
-      // Try to send via server first
+      // Send via production server
       const response = await fetch(`${API_BASE_URL}/api/messages/reply`, {
         method: 'POST',
         headers: {
@@ -64,6 +64,7 @@ export const useMessages = () => {
       if (response.ok) {
         // Refresh messages after sending
         await loadMessages()
+        toast.success('Message sent successfully')
       } else {
         // Fallback: just add to localStorage
         const newMessage: Message = {
@@ -84,6 +85,7 @@ export const useMessages = () => {
       }
     } catch (error) {
       console.error('Error sending message:', error)
+      toast.error('Failed to send message')
       throw error
     } finally {
       setIsSending(false)

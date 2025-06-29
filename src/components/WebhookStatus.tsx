@@ -3,19 +3,11 @@ import { Globe, Copy, CheckCircle, AlertCircle, ExternalLink } from 'lucide-reac
 import toast from 'react-hot-toast'
 
 const WebhookStatus: React.FC = () => {
-  const [webhookUrl, setWebhookUrl] = useState('')
+  const [webhookUrl] = useState('https://torquegpt.onrender.com/api/webhooks/openphone')
   const [isServerRunning, setIsServerRunning] = useState(false)
   const [isChecking, setIsChecking] = useState(true)
 
   useEffect(() => {
-    // Determine webhook URL based on environment
-    const isDevelopment = window.location.hostname === 'localhost'
-    const url = isDevelopment 
-      ? 'http://localhost:3001/api/webhooks/openphone'
-      : 'https://torquegpt.onrender.com/api/webhooks/openphone'
-    
-    setWebhookUrl(url)
-    
     // Check if webhook server is running
     checkServerStatus()
   }, [])
@@ -23,11 +15,7 @@ const WebhookStatus: React.FC = () => {
   const checkServerStatus = async () => {
     setIsChecking(true)
     try {
-      const isDevelopment = window.location.hostname === 'localhost'
-      const healthUrl = isDevelopment 
-        ? 'http://localhost:3001/health'
-        : 'https://torquegpt.onrender.com/health'
-      
+      const healthUrl = 'https://torquegpt.onrender.com/health'
       const response = await fetch(healthUrl)
       setIsServerRunning(response.ok)
     } catch {
@@ -126,12 +114,8 @@ const WebhookStatus: React.FC = () => {
         {!isServerRunning && !isChecking && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
             <p className="text-sm text-yellow-800">
-              <strong>Note:</strong> The webhook server is not running. 
-              {window.location.hostname === 'localhost' ? (
-                <span> Run <code className="bg-yellow-100 px-1 rounded">npm run dev</code> to start both the client and webhook server.</span>
-              ) : (
-                <span> The production server may be starting up or experiencing issues.</span>
-              )}
+              <strong>Note:</strong> The webhook server appears to be offline. 
+              The production server at https://torquegpt.onrender.com may be starting up or experiencing issues.
             </p>
           </div>
         )}

@@ -1,5 +1,5 @@
 import React from 'react'
-import { Settings as SettingsIcon, Save, Key, Phone, CheckCircle, AlertCircle } from 'lucide-react'
+import { Settings as SettingsIcon, Save, Key, Phone, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -20,7 +20,7 @@ const settingsSchema = z.object({
 type SettingsFormData = z.infer<typeof settingsSchema>
 
 const Settings: React.FC = () => {
-  const { settings, updateSettings, isUpdating } = useBusinessSettings()
+  const { settings, serverSettings, updateSettings, isUpdating, refreshSettings } = useBusinessSettings()
 
   const { register, handleSubmit, formState: { errors }, watch } = useForm<SettingsFormData>({
     resolver: zodResolver(settingsSchema),
@@ -41,15 +41,18 @@ const Settings: React.FC = () => {
     updateSettings(data)
   }
 
-  const getApiKeyStatus = (apiKey?: string) => {
-    if (!apiKey || apiKey.length < 10) {
-      return { status: 'missing', color: 'text-red-600', icon: AlertCircle }
+  const getApiKeyStatus = (apiKey?: string, serverConfigured?: boolean) => {
+    if (serverConfigured) {
+      return { status: 'server', color: 'text-green-600', icon: CheckCircle, text: 'Configured on server' }
     }
-    return { status: 'configured', color: 'text-green-600', icon: CheckCircle }
+    if (!apiKey || apiKey.length < 10) {
+      return { status: 'missing', color: 'text-red-600', icon: AlertCircle, text: 'Not configured' }
+    }
+    return { status: 'local', color: 'text-blue-600', icon: CheckCircle, text: 'Configured locally' }
   }
 
-  const openaiStatus = getApiKeyStatus(watchedValues.openai_api_key)
-  const openphoneStatus = getApiKeyStatus(watchedValues.openphone_api_key)
+  const openaiStatus = getApiKeyStatus(watchedValues.openai_api_key, serverSettings?.openai_configured)
+  const openphoneStatus = getApiKeyStatus(watchedValues.openphone_api_key, serverSettings?.openphone_configured)
 
   return (
     <div className="space-y-6">
@@ -62,14 +65,26 @@ const Settings: React.FC = () => {
 
       {/* API Status Overview */}
       <div className="bg-white shadow rounded-lg p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">API Configuration Status</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-medium text-gray-900">API Configuration Status</h3>
+          <button
+            onClick={refreshSettings}
+            className="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+          >
+            <RefreshCw className="h-4 w-4 mr-1" />
+            Refresh
+          </button>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="flex items-center space-x-3">
             <openaiStatus.icon className={`h-5 w-5 ${openaiStatus.color}`} />
             <div>
               <p className="text-sm font-medium text-gray-900">OpenAI API</p>
               <p className={`text-xs ${openaiStatus.color}`}>
-                {openaiStatus.status === 'configured' ? 'Configured' : 'Not configured'}
+                {openaiStatus.text}
+                {serverSettings?.openai_key_preview && (
+                  <span className="ml-1 font-mono">({serverSettings.openai_key_preview})</span>
+                )}
               </p>
             </div>
           </div>
@@ -78,7 +93,10 @@ const Settings: React.FC = () => {
             <div>
               <p className="text-sm font-medium text-gray-900">OpenPhone API</p>
               <p className={`text-xs ${openphoneStatus.color}`}>
-                {openphoneStatus.status === 'configured' ? 'Configured' : 'Not configured'}
+                {openphoneStatus.text}
+                {serverSettings?.openphone_key_preview && (
+                  <span className="ml-1 font-mono">({serverSettings.openphone_key_preview})</span>
+                )}
               </p>
             </div>
           </div>
@@ -87,6 +105,9 @@ const Settings: React.FC = () => {
           <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
             <p className="text-sm text-yellow-800">
               <strong>Note:</strong> Some API keys are missing. The app will have limited functionality until all keys are configured.
+              {serverSettings && (
+                <span> API keys configured on the server will persist across deployments.</span>
+              )}
             </p>
           </div>
         )}
@@ -228,11 +249,15 @@ const Settings: React.FC = () => {
                   <input
                     {...register('openai_api_key')}
                     type="password"
-                    placeholder="sk-..."
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                    placeholder={serverSettings?.openai_configured ? 'Configured on server' : 'sk-...'}
+                    disabled={serverSettings?.openai_configured}
+                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm disabled:bg-gray-100 disabled:text-gray-500"
                   />
                   <p className="mt-1 text-xs text-gray-500">
                     Required for AI message processing and quote generation
+                    {serverSettings?.openai_configured && (
+                      <span className="text-green-600 font-medium"> (Configured on server)</span>
+                    )}
                   </p>
                 </div>
                 <div>
@@ -246,11 +271,15 @@ const Settings: React.FC = () => {
                   <input
                     {...register('openphone_api_key')}
                     type="password"
-                    placeholder="op_..."
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                    placeholder={serverSettings?.openphone_configured ? 'Configured on server' : 'op_...'}
+                    disabled={serverSettings?.openphone_configured}
+                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm disabled:bg-gray-100 disabled:text-gray-500"
                   />
                   <p className="mt-1 text-xs text-gray-500">
                     Required for SMS communication with customers
+                    {serverSettings?.openphone_configured && (
+                      <span className="text-green-600 font-medium"> (Configured on server)</span>
+                    )}
                   </p>
                 </div>
               </div>

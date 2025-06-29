@@ -7,7 +7,7 @@ import { handleOpenPhoneWebhook } from './webhooks/openphone.js'
 import { messageProcessor } from './services/messageProcessor.js'
 
 const app = express()
-const PORT = process.env.PORT || 3001
+const PORT = process.env.PORT || 10000
 
 // Middleware
 app.use(cors({
@@ -36,9 +36,32 @@ app.get('/', (req, res) => {
     endpoints: {
       health: '/health',
       webhook: '/api/webhooks/openphone',
-      messages: '/api/messages'
+      messages: '/api/messages',
+      settings: '/api/settings'
     }
   })
+})
+
+// Settings API endpoint (NEW)
+app.get('/api/settings', (req, res) => {
+  try {
+    const settings = {
+      openai_configured: !!(process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.length > 10),
+      openphone_configured: !!(process.env.OPENPHONE_API_KEY && process.env.OPENPHONE_API_KEY.length > 10),
+      business_name: process.env.BUSINESS_NAME || 'Pink Chicken Speed Shop',
+      labor_rate: parseInt(process.env.LABOR_RATE || '80'),
+      dnd_enabled: process.env.DND_ENABLED === 'true',
+      openai_key_preview: process.env.OPENAI_API_KEY ? 
+        `••••••••${process.env.OPENAI_API_KEY.slice(-4)}` : undefined,
+      openphone_key_preview: process.env.OPENPHONE_API_KEY ? 
+        `••••••••${process.env.OPENPHONE_API_KEY.slice(-4)}` : undefined
+    }
+    
+    res.json(settings)
+  } catch (error) {
+    console.error('Error fetching settings:', error)
+    res.status(500).json({ error: 'Failed to fetch settings' })
+  }
 })
 
 // Messages API endpoint
@@ -110,6 +133,7 @@ app.listen(PORT, () => {
   console.log(`📡 OpenPhone webhook URL: ${baseUrl}/api/webhooks/openphone`)
   console.log(`🏥 Health check: ${baseUrl}/health`)
   console.log(`📨 Messages API: ${baseUrl}/api/messages`)
+  console.log(`⚙️  Settings API: ${baseUrl}/api/settings`)
   
   if (process.env.NODE_ENV === 'production') {
     console.log(`✅ TorqueSheetGPT webhook server deployed successfully!`)
