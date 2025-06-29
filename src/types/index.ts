@@ -62,3 +62,21 @@ export interface ServerSettings {
   openai_key_preview?: string
   openphone_key_preview?: string
 }
+
+export interface TechSheet {
+  id: string
+  title: string
+  description: string
+  vehicle_info?: string
+  customer_name?: string
+  estimated_time: number
+  difficulty: 'Easy' | 'Medium' | 'Hard'
+  tools_required: string[]
+  parts_needed: string[]
+  safety_warnings: string[]
+  step_by_step: string[]
+  tips: string[]
+  created_at: string
+  generated_by: 'ai' | 'manual'
+  source?: 'booking' | 'manual'
+}

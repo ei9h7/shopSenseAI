@@ -8,22 +8,40 @@ import {
   Mail,
   Clock,
   AlertTriangle,
-  CheckCircle
+  CheckCircle,
+  ClipboardList
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import DashboardCard from '../components/DashboardCard'
 import DoNotDisturbToggle from '../components/DoNotDisturbToggle'
 import { useMessages } from '../hooks/useMessages'
 import { useQuotes } from '../hooks/useQuotes'
+import { useTechSheets } from '../hooks/useTechSheets'
 
+/**
+ * Dashboard Component
+ * 
+ * The main dashboard provides an overview of all business activities including:
+ * - Real-time message statistics with emergency alerts
+ * - Quote management and revenue tracking
+ * - Tech sheet generation statistics
+ * - Recent activity feed with priority indicators
+ * - Quick action buttons for common tasks
+ * - Do Not Disturb toggle for AI response control
+ * 
+ * The dashboard automatically updates with real-time data and provides
+ * visual indicators for urgent items requiring immediate attention.
+ */
 const Dashboard: React.FC = () => {
   const { messages, getUnreadCount, getEmergencyMessages } = useMessages()
   const { getQuoteStats } = useQuotes()
+  const { getTechSheetStats } = useTechSheets()
   
   // Calculate real stats from data
   const unreadMessages = getUnreadCount()
   const emergencyMessages = getEmergencyMessages()
   const quoteStats = getQuoteStats()
+  const techSheetStats = getTechSheetStats()
   
   // Mock data for features not yet implemented
   const todayAppointments = 0 // TODO: Implement calendar functionality
@@ -105,11 +123,11 @@ const Dashboard: React.FC = () => {
           href="/quotes"
         />
         <DashboardCard
-          title="Today's Appointments"
-          value={todayAppointments}
-          icon={Calendar}
+          title="Tech Sheets"
+          value={techSheetStats.total}
+          icon={ClipboardList}
           color="purple"
-          href="/calendar"
+          href="/tech-sheets"
         />
         <DashboardCard
           title="Monthly Revenue"
@@ -171,7 +189,7 @@ const Dashboard: React.FC = () => {
           <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
             Quick Actions
           </h3>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Link
               to="/messages"
               className="flex items-center justify-center px-4 py-3 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
@@ -185,6 +203,13 @@ const Dashboard: React.FC = () => {
             >
               <FileText className="h-5 w-5 mr-2" />
               Create Quote
+            </Link>
+            <Link
+              to="/tech-sheets"
+              className="flex items-center justify-center px-4 py-3 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+            >
+              <ClipboardList className="h-5 w-5 mr-2" />
+              Generate Tech Sheet
             </Link>
             <Link
               to="/settings"
