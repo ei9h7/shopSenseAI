@@ -59,14 +59,26 @@ export const useBusinessSettings = () => {
     try {
       // First try to load from server (for persistent API keys)
       try {
+        console.log('🔄 Fetching server settings...')
         const response = await fetch('https://torquegpt.onrender.com/api/settings')
         if (response.ok) {
           const serverData = await response.json()
           setServerSettings(serverData)
-          console.log('Server settings loaded:', serverData)
+          console.log('✅ Server settings loaded:', serverData)
+          
+          // Show toast if API keys are configured on server
+          if (serverData.openai_configured && serverData.openphone_configured) {
+            toast.success('API keys loaded from server')
+          } else if (serverData.openai_configured) {
+            toast.success('OpenAI API key loaded from server')
+          } else if (serverData.openphone_configured) {
+            toast.success('OpenPhone API key loaded from server')
+          }
+        } else {
+          console.warn('⚠️ Server settings request failed:', response.status)
         }
       } catch (error) {
-        console.log('Server settings not available, using local storage only')
+        console.log('⚠️ Server settings not available, using local storage only:', error)
       }
 
       // Load from localStorage for user preferences
@@ -84,12 +96,14 @@ export const useBusinessSettings = () => {
         }
         
         setSettings(mergedSettings)
+        console.log('📱 Local settings loaded and merged')
       } else {
         // No local settings found, use defaults
         setSettings(defaultSettings)
+        console.log('🆕 Using default settings')
       }
     } catch (error) {
-      console.error('Error loading settings:', error)
+      console.error('❌ Error loading settings:', error)
       setSettings(defaultSettings)
     } finally {
       setIsLoading(false)
@@ -117,6 +131,14 @@ export const useBusinessSettings = () => {
       localStorage.setItem('business-settings', JSON.stringify(updatedSettings))
       setSettings(updatedSettings)
       toast.success('Settings updated successfully')
+      
+      // Log API key updates for debugging
+      if (newSettings.openai_api_key) {
+        console.log('🔑 OpenAI API key updated locally')
+      }
+      if (newSettings.openphone_api_key) {
+        console.log('📱 OpenPhone API key updated locally')
+      }
     } catch (error) {
       console.error('Settings update error:', error)
       toast.error('Failed to update settings')
@@ -146,6 +168,7 @@ export const useBusinessSettings = () => {
       localStorage.setItem('business-settings', JSON.stringify(updatedSettings))
       setSettings(updatedSettings)
       
+      console.log(`🔕 DND ${enabled ? 'enabled' : 'disabled'}`)
       toast.success(`Do Not Disturb ${enabled ? 'enabled' : 'disabled'}`)
     } catch (error) {
       console.error('DND toggle error:', error)
@@ -166,6 +189,16 @@ export const useBusinessSettings = () => {
     toast.success('Settings refreshed from server')
   }
 
+  // Helper function to get effective API keys (server takes precedence)
+  const getEffectiveApiKeys = () => {
+    return {
+      openai_api_key: serverSettings?.openai_configured ? 'server-configured' : settings?.openai_api_key,
+      openphone_api_key: serverSettings?.openphone_configured ? 'server-configured' : settings?.openphone_api_key,
+      has_openai: serverSettings?.openai_configured || !!(settings?.openai_api_key && settings.openai_api_key.length > 10),
+      has_openphone: serverSettings?.openphone_configured || !!(settings?.openphone_api_key && settings.openphone_api_key.length > 10)
+    }
+  }
+
   return {
     settings,
     serverSettings,
@@ -174,6 +207,7 @@ export const useBusinessSettings = () => {
     updateSettings,
     isUpdating,
     toggleDnd,
-    refreshSettings
+    refreshSettings,
+    getEffectiveApiKeys
   }
 }
