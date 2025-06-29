@@ -82,58 +82,90 @@ export class MessageProcessor {
       
       if (!isDndEnabled) {
         // Just store the message, don't auto-respond
-        console.log('✅ Message received (no auto-response)')
+        console.log('✅ Message received (no auto-response - DND disabled)')
         return
       }
 
-      // Process with AI if services are available
-      if (this.openAI && this.openPhone && this.settings) {
-        console.log('🤖 Processing with AI...')
+      // Always try to send a response when DND is enabled
+      if (this.openPhone) {
+        let aiResponse: AIResponse
+
+        // Try AI processing first
+        if (this.openAI && this.settings) {
+          try {
+            console.log('🤖 Attempting AI processing...')
+            aiResponse = await this.openAI.processMessage(
+              messageBody, 
+              this.settings.business_name
+            )
+            console.log('🎯 AI Response successful:', aiResponse)
+          } catch (aiError) {
+            console.error('❌ AI processing failed, using emergency fallback:', aiError)
+            
+            // Emergency fallback when AI completely fails
+            aiResponse = this.getEmergencyFallback(messageBody)
+          }
+        } else {
+          console.log('⚠️  AI service not available, using emergency fallback')
+          aiResponse = this.getEmergencyFallback(messageBody)
+        }
+
+        // Always send a response
+        await this.sendResponse(phoneNumber, aiResponse, message.id)
         
-        try {
-          const aiResponse = await this.openAI.processMessage(
-            messageBody, 
-            this.settings.business_name
-          )
-
-          console.log('🎯 AI Response:', aiResponse)
-
-          // Check if it's an emergency
-          if (this.isEmergency(aiResponse.intent)) {
-            console.log('🚨 Emergency detected!')
-          }
-          
-          // Send AI response
-          await this.sendResponse(phoneNumber, aiResponse, message.id)
-        } catch (aiError) {
-          console.error('❌ AI processing failed:', aiError)
-          
-          // Send a simple fallback response
-          const fallbackResponse: AIResponse = {
-            reply: "Thanks for your message! I received it and will get back to you soon. If this is urgent, please call me directly.",
-            intent: "Fallback",
-            action: "Manual review needed"
-          }
-          
-          await this.sendResponse(phoneNumber, fallbackResponse, message.id)
+        // Log action needed for manual follow-up
+        if (aiResponse.action.includes('URGENT') || aiResponse.intent === 'Emergency') {
+          console.log('🚨🚨🚨 URGENT ACTION REQUIRED 🚨🚨🚨')
+          console.log(`📞 CALL ${phoneNumber} IMMEDIATELY`)
+          console.log(`💬 Message: "${messageBody}"`)
+          console.log('🚨🚨🚨 URGENT ACTION REQUIRED 🚨🚨🚨')
         }
       } else {
-        console.warn('⚠️  AI services not available - message stored only')
+        console.error('❌ OpenPhone service not available - cannot send response')
       }
     } catch (error) {
       console.error('❌ Error processing message:', error)
       
-      // Try to send a basic acknowledgment even if processing fails
+      // Last resort: try to send a basic acknowledgment
       if (this.openPhone) {
         try {
-          await this.openPhone.sendSMS(phoneNumber, "Message received. I'll get back to you soon!")
-          console.log('✅ Sent basic acknowledgment')
+          await this.openPhone.sendSMS(
+            phoneNumber, 
+            "Message received! I'll get back to you soon. If urgent, please call me directly."
+          )
+          console.log('✅ Sent emergency acknowledgment')
         } catch (smsError) {
-          console.error('❌ Failed to send acknowledgment:', smsError)
+          console.error('❌ Failed to send emergency acknowledgment:', smsError)
         }
       }
       
       throw error
+    }
+  }
+
+  private getEmergencyFallback(messageBody: string): AIResponse {
+    const lowerMessage = messageBody.toLowerCase()
+    
+    // Check for emergency keywords
+    if (lowerMessage.includes('emergency') || 
+        lowerMessage.includes('urgent') || 
+        lowerMessage.includes('breakdown') ||
+        lowerMessage.includes('stranded') ||
+        lowerMessage.includes('accident') ||
+        lowerMessage.includes('help') ||
+        lowerMessage.includes('stuck')) {
+      return {
+        reply: "🚨 EMERGENCY RECEIVED! I got your urgent message. If you're in immediate danger, call 911. Otherwise, I'll contact you within 15 minutes. Stay safe!",
+        intent: "Emergency",
+        action: "URGENT - Contact customer immediately"
+      }
+    }
+    
+    // Default safe response
+    return {
+      reply: "Thanks for your message! I received it and will get back to you personally within the hour. If this is urgent, please call me directly.",
+      intent: "General Inquiry",
+      action: "Manual review and response needed"
     }
   }
 
@@ -148,7 +180,10 @@ export class MessageProcessor {
       // Send SMS response
       await this.openPhone.sendSMS(phoneNumber, aiResponse.reply)
 
-      console.log('✅ AI response sent successfully')
+      console.log('✅ Response sent successfully')
+      
+      // Log the action for manual follow-up
+      console.log(`📋 Action required: ${aiResponse.action}`)
     } catch (error) {
       console.error('❌ Error sending response:', error)
       throw error

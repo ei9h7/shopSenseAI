@@ -36,9 +36,9 @@ export class OpenAIService {
       const response = await axios.post(
         OPENAI_API_URL,
         {
-          model: 'gpt-4o-mini', // Use cheaper model to avoid rate limits
+          model: 'gpt-4o-mini', // Use cheaper model to reduce costs
           temperature: 0.6,
-          max_tokens: 500, // Limit response length
+          max_tokens: 500, // Limit response length to save costs
           messages
         },
         {
@@ -56,55 +56,106 @@ export class OpenAIService {
     } catch (error: any) {
       console.error('OpenAI API Error:', error.response?.status, error.response?.data)
       
-      // Handle rate limiting
+      // Handle specific error cases and provide fallback responses
       if (error.response?.status === 429) {
-        console.log('⚠️  Rate limit hit, using fallback response')
-        return this.getFallbackResponse(messageBody)
+        console.log('⚠️  Rate limit/No credits - using intelligent fallback')
+        return this.getIntelligentFallback(messageBody)
       }
       
-      // Handle other API errors
+      if (error.response?.status === 401) {
+        console.log('⚠️  Invalid API key - using fallback response')
+        return this.getIntelligentFallback(messageBody)
+      }
+      
       if (error.response?.status >= 400) {
-        console.log('⚠️  API error, using fallback response')
-        return this.getFallbackResponse(messageBody)
+        console.log('⚠️  API error - using fallback response')
+        return this.getIntelligentFallback(messageBody)
       }
       
-      throw new Error('Failed to process message with AI')
+      // Network or other errors
+      console.log('⚠️  Network/timeout error - using fallback response')
+      return this.getIntelligentFallback(messageBody)
     }
   }
 
-  private getFallbackResponse(messageBody: string): AIResponse {
-    // Simple fallback logic when AI is unavailable
+  private getIntelligentFallback(messageBody: string): AIResponse {
+    // Intelligent fallback logic when AI is unavailable
     const lowerMessage = messageBody.toLowerCase()
     
-    if (lowerMessage.includes('emergency') || lowerMessage.includes('urgent') || lowerMessage.includes('breakdown')) {
+    // Emergency detection
+    if (lowerMessage.includes('emergency') || 
+        lowerMessage.includes('urgent') || 
+        lowerMessage.includes('breakdown') ||
+        lowerMessage.includes('stranded') ||
+        lowerMessage.includes('accident') ||
+        lowerMessage.includes('help') ||
+        lowerMessage.includes('stuck')) {
       return {
-        reply: "Thanks for reaching out! This sounds urgent. I'll get back to you as soon as possible. If this is an emergency, please call me directly.",
+        reply: "🚨 EMERGENCY RECEIVED! I got your urgent message and will respond immediately. If you're in immediate danger, please call 911. Otherwise, I'll contact you within 15 minutes. Stay safe!",
         intent: "Emergency",
-        action: "Priority response needed"
+        action: "URGENT - Contact customer immediately"
       }
     }
     
-    if (lowerMessage.includes('oil change') || lowerMessage.includes('service') || lowerMessage.includes('maintenance')) {
+    // Service/maintenance requests
+    if (lowerMessage.includes('oil change') || 
+        lowerMessage.includes('service') || 
+        lowerMessage.includes('maintenance') ||
+        lowerMessage.includes('tune up') ||
+        lowerMessage.includes('inspection')) {
       return {
-        reply: "Hi! Thanks for your message about service. I'd be happy to help with your vehicle maintenance. My rate is $80/hr with a 1-hour minimum. Can you tell me more about what you need?",
+        reply: "Hi! Thanks for reaching out about service. I'd be happy to help with your vehicle maintenance. My rate is $80/hr with a 1-hour minimum. I'll get back to you shortly with more details!",
         intent: "Service Request",
-        action: "Quote requested"
+        action: "Follow up with service quote"
       }
     }
     
-    if (lowerMessage.includes('quote') || lowerMessage.includes('price') || lowerMessage.includes('cost')) {
+    // Quote requests
+    if (lowerMessage.includes('quote') || 
+        lowerMessage.includes('price') || 
+        lowerMessage.includes('cost') ||
+        lowerMessage.includes('estimate') ||
+        lowerMessage.includes('how much')) {
       return {
-        reply: "Thanks for reaching out! I'd be happy to provide a quote. My labor rate is $80/hr with a 1-hour minimum. Can you provide more details about the work needed?",
+        reply: "Thanks for your quote request! I'd be happy to provide an estimate. My labor rate is $80/hr with a 1-hour minimum. I'll review your message and get back to you with a detailed quote soon.",
         intent: "Quote Request",
-        action: "More info needed"
+        action: "Prepare detailed quote"
       }
     }
     
-    // Default response
+    // Repair/problem descriptions
+    if (lowerMessage.includes('problem') || 
+        lowerMessage.includes('issue') || 
+        lowerMessage.includes('broken') ||
+        lowerMessage.includes('noise') ||
+        lowerMessage.includes('leak') ||
+        lowerMessage.includes('won\'t start') ||
+        lowerMessage.includes('not working')) {
+      return {
+        reply: "I received your message about the issue with your vehicle. I'll take a look at what you've described and get back to you with next steps. My diagnostic rate is $80/hr. Thanks for reaching out!",
+        intent: "Repair Request",
+        action: "Diagnose issue and provide solution"
+      }
+    }
+    
+    // Booking/appointment requests
+    if (lowerMessage.includes('appointment') || 
+        lowerMessage.includes('schedule') || 
+        lowerMessage.includes('book') ||
+        lowerMessage.includes('available') ||
+        lowerMessage.includes('when can')) {
+      return {
+        reply: "Thanks for wanting to schedule service! I'll check my availability and get back to you with some time options. My rate is $80/hr with a 1-hour minimum. Looking forward to helping you!",
+        intent: "Booking Request",
+        action: "Check schedule and offer appointment times"
+      }
+    }
+    
+    // Default response for any other message
     return {
-      reply: "Hi! Thanks for your message. I'm Pink Chicken Speed Shop and I'd be happy to help with your automotive needs. My rate is $80/hr. What can I help you with today?",
+      reply: "Hi! Thanks for your message. I'm Pink Chicken Speed Shop and I received your inquiry. I'll review it and get back to you personally within the hour. My rate is $80/hr. Thanks for choosing us!",
       intent: "General Inquiry",
-      action: "Initial contact"
+      action: "Review message and provide personalized response"
     }
   }
 
