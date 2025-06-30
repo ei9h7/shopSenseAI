@@ -68,6 +68,7 @@ export class OpenPhoneService {
     
     /**
      * Gets messages using the correct OpenPhone API format with required parameters
+     * Based on the API errors, we need to provide BOTH phoneNumberId AND participants
      * https://www.openphone.com/docs/mdx/api-reference/messages/list-messages
      */
     async getMessages(phoneNumber = null, limit = 50) {
@@ -83,22 +84,31 @@ export class OpenPhoneService {
             // Add limit parameter (required, max 100)
             params.append('limit', Math.min(limit, 100).toString());
             
-            // Method 1: Use phoneNumberId if available (from webhook data)
+            // According to the error, we need BOTH phoneNumberId AND participants
             if (this.phoneNumberId) {
+                // Add phoneNumberId
                 params.append('phoneNumberId', this.phoneNumberId);
-                console.log(`🎯 Using phoneNumberId filter: ${this.phoneNumberId}`);
-            }
-            // Method 2: Use participants array if we have a specific phone number
-            else if (phoneNumber) {
-                // According to OpenPhone docs, participants should be an array of phone numbers
-                params.append('participants', JSON.stringify([phoneNumber, this.phoneNumber]));
-                console.log(`🎯 Using participants filter: [${phoneNumber}, ${this.phoneNumber}]`);
-            }
-            // Method 3: If we have neither, we need to provide at least one required parameter
-            else {
-                // Use participants with just our phone number to get all conversations
-                params.append('participants', JSON.stringify([this.phoneNumber]));
-                console.log(`🎯 Using participants filter with our number: [${this.phoneNumber}]`);
+                console.log(`🎯 Using phoneNumberId: ${this.phoneNumberId}`);
+                
+                // Also add participants as required by the API
+                if (phoneNumber) {
+                    // Participants array with the specific customer
+                    params.append('participants', JSON.stringify([phoneNumber]));
+                    console.log(`🎯 Using participants: [${phoneNumber}]`);
+                } else {
+                    // Participants array with our phone number to get all conversations for this phoneNumberId
+                    params.append('participants', JSON.stringify([this.phoneNumber]));
+                    console.log(`🎯 Using participants: [${this.phoneNumber}]`);
+                }
+            } else {
+                // Fallback: Use participants only (when we don't have phoneNumberId)
+                if (phoneNumber) {
+                    params.append('participants', JSON.stringify([phoneNumber, this.phoneNumber]));
+                    console.log(`🎯 Fallback - Using participants: [${phoneNumber}, ${this.phoneNumber}]`);
+                } else {
+                    params.append('participants', JSON.stringify([this.phoneNumber]));
+                    console.log(`🎯 Fallback - Using participants: [${this.phoneNumber}]`);
+                }
             }
             
             const url = `${OPENPHONE_API_URL}/messages?${params.toString()}`;
@@ -192,10 +202,11 @@ export class OpenPhoneService {
                 // Check for specific error codes mentioned in OpenPhone docs
                 if (error.response.status === 400) {
                     console.error('❌ Bad Request - Parameter issues:');
+                    console.error('   - Both phoneNumberId AND participants are required');
                     console.error('   - phoneNumberId format should be: PN...');
                     console.error('   - participants should be JSON array of phone numbers');
-                    console.error('   - One of phoneNumberId OR participants is required');
                     console.error(`   - Current phoneNumberId: ${this.phoneNumberId || 'Not set'}`);
+                    console.error(`   - Current participants: ${phoneNumber ? `[${phoneNumber}]` : `[${this.phoneNumber}]`}`);
                 }
                 
                 if (error.response.status === 401) {
