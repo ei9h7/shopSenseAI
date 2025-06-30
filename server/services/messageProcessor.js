@@ -91,12 +91,22 @@ export class MessageProcessor {
                     this.settings.business_name
                 );
                 
-                console.log('🎯 AI Response:', aiResponse);
+                console.log('🎯 AI Response received:');
+                console.log('   Reply:', aiResponse.reply);
+                console.log('   Intent:', aiResponse.intent);
+                console.log('   Action:', aiResponse.action);
 
-                // Check for booking confirmation in the action
-                if (aiResponse.action && aiResponse.action.includes('BOOKING_CONFIRMED:')) {
-                    console.log('📅 Booking confirmation detected, creating appointment...');
-                    this.createAppointmentFromBooking(aiResponse.action, phoneNumber);
+                // Check for booking confirmation in the action OR reply
+                const isBookingConfirmed = this.checkForBookingConfirmation(aiResponse, messageBody, conversationHistory);
+                
+                if (isBookingConfirmed) {
+                    console.log('📅 BOOKING DETECTED! Creating appointment...');
+                    const appointment = this.createAppointmentFromConversation(phoneNumber, conversationHistory, messageBody, aiResponse);
+                    if (appointment) {
+                        console.log('✅ Appointment successfully created:', appointment);
+                    } else {
+                        console.log('❌ Failed to create appointment');
+                    }
                 }
 
                 // Check if it's an emergency
@@ -120,6 +130,164 @@ export class MessageProcessor {
     }
 
     /**
+     * Enhanced booking detection that looks for multiple indicators
+     */
+    checkForBookingConfirmation(aiResponse, currentMessage, conversationHistory) {
+        const indicators = [
+            // Direct booking confirmation in action
+            aiResponse.action && aiResponse.action.includes('BOOKING_CONFIRMED:'),
+            
+            // Booking language in reply
+            aiResponse.reply && (
+                aiResponse.reply.toLowerCase().includes('scheduled') ||
+                aiResponse.reply.toLowerCase().includes('booked') ||
+                aiResponse.reply.toLowerCase().includes('appointment confirmed') ||
+                aiResponse.reply.toLowerCase().includes('see you on') ||
+                aiResponse.reply.toLowerCase().includes('see you thursday') ||
+                aiResponse.reply.toLowerCase().includes('see you monday') ||
+                aiResponse.reply.toLowerCase().includes('see you tuesday') ||
+                aiResponse.reply.toLowerCase().includes('see you wednesday') ||
+                aiResponse.reply.toLowerCase().includes('see you friday')
+            ),
+            
+            // Intent indicates booking
+            aiResponse.intent && (
+                aiResponse.intent.toLowerCase().includes('booking') ||
+                aiResponse.intent.toLowerCase().includes('appointment') ||
+                aiResponse.intent.toLowerCase().includes('scheduled')
+            ),
+            
+            // Current message confirms appointment
+            currentMessage && (
+                currentMessage.toLowerCase().includes('thursday at 10') ||
+                currentMessage.toLowerCase().includes('book') ||
+                currentMessage.toLowerCase().includes('schedule') ||
+                currentMessage.toLowerCase().includes('appointment')
+            )
+        ];
+        
+        const detectedIndicators = indicators.filter(Boolean);
+        console.log(`🔍 Booking detection check: ${detectedIndicators.length} indicators found`);
+        console.log('   Indicators:', indicators.map((ind, i) => `${i}: ${ind}`));
+        
+        return detectedIndicators.length > 0;
+    }
+
+    /**
+     * Creates appointment from conversation context
+     */
+    createAppointmentFromConversation(phoneNumber, conversationHistory, currentMessage, aiResponse) {
+        try {
+            console.log('📅 Creating appointment from conversation...');
+            
+            // Extract customer information from conversation
+            const customerInfo = this.extractCustomerInfoFromConversation(conversationHistory, phoneNumber);
+            console.log('👤 Customer info extracted:', customerInfo);
+            
+            // Extract appointment details
+            const appointmentDetails = this.extractAppointmentDetails(conversationHistory, currentMessage, aiResponse);
+            console.log('📋 Appointment details extracted:', appointmentDetails);
+            
+            // Create appointment object
+            const appointment = {
+                id: Date.now().toString(),
+                customer_name: customerInfo.name || 'Customer',
+                customer_phone: phoneNumber,
+                vehicle_info: customerInfo.vehicle || 'Vehicle TBD',
+                service_type: customerInfo.service || 'Service TBD',
+                date: appointmentDetails.date,
+                time: appointmentDetails.time,
+                duration: 1, // Default 1 hour
+                status: 'scheduled',
+                notes: `Auto-booked from SMS: "${currentMessage}"`,
+                created_at: new Date().toISOString()
+            };
+            
+            // Store appointment
+            this.appointments.push(appointment);
+            console.log('✅ Appointment stored in memory:', appointment);
+            
+            // Update customer record
+            this.updateCustomerRecord(phoneNumber, customerInfo.name, customerInfo.vehicle, customerInfo.service);
+            
+            return appointment;
+        } catch (error) {
+            console.error('❌ Error creating appointment:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Extracts customer info from conversation history
+     */
+    extractCustomerInfoFromConversation(conversationHistory, phoneNumber) {
+        let name = null;
+        let vehicle = null;
+        let service = null;
+        
+        // Look through conversation for customer details
+        conversationHistory.forEach(msg => {
+            const text = msg.body.toLowerCase();
+            
+            // Look for name patterns
+            if (!name) {
+                const nameMatch = text.match(/(?:my name is|i'm|this is|call me)\s+([a-zA-Z]+)/i);
+                if (nameMatch) {
+                    name = nameMatch[1];
+                }
+            }
+            
+            // Look for vehicle patterns
+            if (!vehicle) {
+                const vehicleMatch = text.match(/(\d{4})\s+(ford|chevy|chevrolet|dodge|toyota|honda|nissan|bmw|mercedes|audi|volkswagen|vw|subaru|mazda|hyundai|kia|jeep|ram|gmc|cadillac|buick|lincoln|acura|infiniti|lexus|volvo)\s+(\w+)/i);
+                if (vehicleMatch) {
+                    vehicle = `${vehicleMatch[1]} ${vehicleMatch[2]} ${vehicleMatch[3]}`;
+                } else {
+                    const simpleVehicleMatch = text.match(/(ford|chevy|chevrolet|dodge|toyota|honda|nissan|bmw|mercedes|audi|volkswagen|vw|subaru|mazda|hyundai|kia|jeep|ram|gmc|cadillac|buick|lincoln|acura|infiniti|lexus|volvo)\s+(\w+)/i);
+                    if (simpleVehicleMatch) {
+                        vehicle = `${simpleVehicleMatch[1]} ${simpleVehicleMatch[2]}`;
+                    }
+                }
+            }
+            
+            // Look for service patterns
+            if (!service) {
+                const services = ['oil change', 'brake', 'tire', 'transmission', 'engine', 'battery', 'tune up', 'inspection'];
+                for (const svc of services) {
+                    if (text.includes(svc)) {
+                        service = svc;
+                        break;
+                    }
+                }
+            }
+        });
+        
+        return { name, vehicle, service };
+    }
+
+    /**
+     * Extracts appointment date and time from conversation
+     */
+    extractAppointmentDetails(conversationHistory, currentMessage, aiResponse) {
+        const allText = [
+            ...conversationHistory.map(msg => msg.body),
+            currentMessage,
+            aiResponse.reply,
+            aiResponse.action
+        ].join(' ').toLowerCase();
+        
+        console.log('🔍 Analyzing text for appointment details:', allText.substring(0, 200) + '...');
+        
+        // Extract date
+        let date = this.parseBookingDate(allText);
+        let time = this.parseBookingTime(allText);
+        
+        console.log(`📅 Parsed date: ${date}, time: ${time}`);
+        
+        return { date, time };
+    }
+
+    /**
      * Gets conversation history for a specific phone number
      * Now returns more messages for better context
      */
@@ -131,62 +299,22 @@ export class MessageProcessor {
     }
 
     /**
-     * Creates an appointment from a booking confirmation action
-     */
-    createAppointmentFromBooking(bookingAction, phoneNumber) {
-        try {
-            // Parse the booking confirmation: "BOOKING_CONFIRMED: [Name] | [Phone] | [Vehicle] | [Service] | [Date] | [Time]"
-            const bookingData = bookingAction.replace('BOOKING_CONFIRMED:', '').trim();
-            const parts = bookingData.split('|').map(part => part.trim());
-            
-            if (parts.length >= 6) {
-                const [customerName, phone, vehicle, service, date, time] = parts;
-                
-                // Create appointment object
-                const appointment = {
-                    id: Date.now().toString(),
-                    customer_name: customerName,
-                    customer_phone: phone || phoneNumber,
-                    vehicle_info: vehicle,
-                    service_type: service,
-                    date: this.parseBookingDate(date),
-                    time: this.parseBookingTime(time),
-                    duration: 1, // Default 1 hour
-                    status: 'scheduled',
-                    notes: `Auto-booked from SMS conversation`,
-                    created_at: new Date().toISOString()
-                };
-                
-                // Store appointment
-                this.appointments.push(appointment);
-                console.log('✅ Appointment created:', appointment);
-                
-                // Update customer record
-                this.updateCustomerRecord(phoneNumber, customerName, vehicle, service);
-                
-                return appointment;
-            } else {
-                console.warn('⚠️  Invalid booking confirmation format:', bookingAction);
-            }
-        } catch (error) {
-            console.error('❌ Error creating appointment from booking:', error);
-        }
-        return null;
-    }
-
-    /**
      * Parses booking date from natural language
      */
-    parseBookingDate(dateStr) {
+    parseBookingDate(text) {
         const today = new Date();
         const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-        const lowerDate = dateStr.toLowerCase();
+        const lowerText = text.toLowerCase();
+        
+        console.log('📅 Parsing date from text:', lowerText.substring(0, 100));
         
         // Find the day of the week
         for (let i = 0; i < dayNames.length; i++) {
-            if (lowerDate.includes(dayNames[i])) {
+            if (lowerText.includes(dayNames[i])) {
                 const targetDay = i;
                 const currentDay = today.getDay();
+                
+                console.log(`📅 Found day: ${dayNames[i]} (${targetDay}), current day: ${currentDay}`);
                 
                 // Calculate days until target day
                 let daysUntil = targetDay - currentDay;
@@ -196,41 +324,67 @@ export class MessageProcessor {
                 
                 const appointmentDate = new Date(today);
                 appointmentDate.setDate(today.getDate() + daysUntil);
-                return appointmentDate.toISOString().split('T')[0]; // YYYY-MM-DD format
+                const dateStr = appointmentDate.toISOString().split('T')[0];
+                
+                console.log(`📅 Calculated appointment date: ${dateStr} (${daysUntil} days from now)`);
+                return dateStr;
             }
         }
         
         // Default to tomorrow if we can't parse
         const tomorrow = new Date(today);
         tomorrow.setDate(today.getDate() + 1);
-        return tomorrow.toISOString().split('T')[0];
+        const dateStr = tomorrow.toISOString().split('T')[0];
+        
+        console.log(`📅 Using default date (tomorrow): ${dateStr}`);
+        return dateStr;
     }
 
     /**
      * Parses booking time from natural language
      */
-    parseBookingTime(timeStr) {
-        const lowerTime = timeStr.toLowerCase();
+    parseBookingTime(text) {
+        const lowerText = text.toLowerCase();
+        
+        console.log('🕐 Parsing time from text:', lowerText.substring(0, 100));
         
         // Extract time patterns
-        const timeMatch = lowerTime.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+        const timeMatch = lowerText.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
         if (timeMatch) {
             let hour = parseInt(timeMatch[1]);
             const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
             const ampm = timeMatch[3];
+            
+            console.log(`🕐 Found time components: hour=${hour}, minute=${minute}, ampm=${ampm}`);
             
             // Convert to 24-hour format
             if (ampm === 'pm' && hour !== 12) {
                 hour += 12;
             } else if (ampm === 'am' && hour === 12) {
                 hour = 0;
+            } else if (!ampm && hour < 8) {
+                // Assume PM for hours less than 8 (like 10 = 10am)
+                // Actually, let's assume AM for business hours
             }
             
             // Format as HH:MM
-            return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+            const timeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+            console.log(`🕐 Formatted time: ${timeStr}`);
+            return timeStr;
+        }
+        
+        // Look for specific time mentions
+        if (lowerText.includes('10am') || lowerText.includes('10 am')) {
+            console.log('🕐 Found 10am mention');
+            return '10:00';
+        }
+        if (lowerText.includes('10pm') || lowerText.includes('10 pm')) {
+            console.log('🕐 Found 10pm mention');
+            return '22:00';
         }
         
         // Default to 10:00 AM if we can't parse
+        console.log('🕐 Using default time: 10:00');
         return '10:00';
     }
 
@@ -258,12 +412,12 @@ export class MessageProcessor {
             }
             
             // Update customer name if we have it
-            if (customerName && customerName !== 'Name needed') {
+            if (customerName && customerName !== 'Customer') {
                 customer.full_name = customerName;
             }
             
             // Add vehicle if new
-            if (vehicle && vehicle !== 'Vehicle needed' && !customer.vehicles.some(v => v.details === vehicle)) {
+            if (vehicle && vehicle !== 'Vehicle TBD' && !customer.vehicles.some(v => v.details === vehicle)) {
                 customer.vehicles.push({
                     details: vehicle,
                     added_at: new Date().toISOString()
@@ -272,7 +426,7 @@ export class MessageProcessor {
             }
             
             // Add service history
-            if (service && service !== 'Service needed') {
+            if (service && service !== 'Service TBD') {
                 customer.service_history.push({
                     date: new Date().toISOString(),
                     inquiry: service,
@@ -364,6 +518,7 @@ export class MessageProcessor {
     }
 
     getAppointments() {
+        console.log(`📊 Returning ${this.appointments.length} appointments:`, this.appointments);
         return this.appointments;
     }
 
