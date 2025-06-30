@@ -41,6 +41,9 @@ app.get('/', (req, res) => {
             webhook: '/api/webhooks/openphone',
             messages: '/api/messages',
             customers: '/api/customers',
+            quotes: '/api/quotes',
+            appointments: '/api/appointments',
+            techSheets: '/api/tech-sheets',
             settings: '/api/settings',
             techSheet: '/api/generate-tech-sheet'
         }
@@ -72,9 +75,7 @@ app.get('/api/settings', (req, res) => {
 // Customer Database API endpoint
 app.get('/api/customers', async (req, res) => {
     try {
-        // Ensure messageProcessor is initialized
         await messageProcessor.initialize();
-        
         const customers = messageProcessor.getCustomers();
         console.log(`📊 Returning ${customers.length} customers`);
         res.json({ customers });
@@ -84,6 +85,57 @@ app.get('/api/customers', async (req, res) => {
         res.status(500).json({ 
             error: 'Failed to fetch customers',
             customers: []
+        });
+    }
+});
+
+// Quotes API endpoint
+app.get('/api/quotes', async (req, res) => {
+    try {
+        await messageProcessor.initialize();
+        const quotes = messageProcessor.getQuotes();
+        console.log(`📊 Returning ${quotes.length} quotes`);
+        res.json({ quotes });
+    }
+    catch (error) {
+        console.error('Error fetching quotes:', error);
+        res.status(500).json({ 
+            error: 'Failed to fetch quotes',
+            quotes: []
+        });
+    }
+});
+
+// Appointments API endpoint
+app.get('/api/appointments', async (req, res) => {
+    try {
+        await messageProcessor.initialize();
+        const appointments = messageProcessor.getAppointments();
+        console.log(`📊 Returning ${appointments.length} appointments`);
+        res.json({ appointments });
+    }
+    catch (error) {
+        console.error('Error fetching appointments:', error);
+        res.status(500).json({ 
+            error: 'Failed to fetch appointments',
+            appointments: []
+        });
+    }
+});
+
+// Tech Sheets API endpoint
+app.get('/api/tech-sheets', async (req, res) => {
+    try {
+        await messageProcessor.initialize();
+        const techSheets = messageProcessor.getTechSheets();
+        console.log(`📊 Returning ${techSheets.length} tech sheets`);
+        res.json({ techSheets });
+    }
+    catch (error) {
+        console.error('Error fetching tech sheets:', error);
+        res.status(500).json({ 
+            error: 'Failed to fetch tech sheets',
+            techSheets: []
         });
     }
 });
@@ -262,6 +314,9 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
     console.log(`🏥 Health check: https://torquegpt.onrender.com/health`);
     console.log(`📨 Messages API: https://torquegpt.onrender.com/api/messages`);
     console.log(`👥 Customers API: https://torquegpt.onrender.com/api/customers`);
+    console.log(`💰 Quotes API: https://torquegpt.onrender.com/api/quotes`);
+    console.log(`📅 Appointments API: https://torquegpt.onrender.com/api/appointments`);
+    console.log(`🔧 Tech Sheets API: https://torquegpt.onrender.com/api/tech-sheets`);
     console.log(`⚙️  Settings API: https://torquegpt.onrender.com/api/settings`);
     console.log(`🔧 Tech Sheet API: https://torquegpt.onrender.com/api/generate-tech-sheet`);
     console.log(`✅ TorqueSheetGPT webhook server deployed successfully!`);

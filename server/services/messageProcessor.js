@@ -7,6 +7,15 @@ let messageStore = []
 // Customer database storage (in production, use a proper database)
 let customerDatabase = []
 
+// Quotes database storage
+let quotesDatabase = []
+
+// Appointments database storage
+let appointmentsDatabase = []
+
+// Tech sheets database storage
+let techSheetsDatabase = []
+
 export class MessageProcessor {
     openAI = null;
     openPhone = null;
@@ -44,8 +53,8 @@ export class MessageProcessor {
                 console.warn('⚠️  OpenPhone API key or phone number not found');
             }
 
-            // Load existing customer database
-            this.loadCustomerDatabase();
+            // Load existing databases
+            this.loadDatabases();
 
             console.log('🤖 MessageProcessor initialized successfully');
         }
@@ -55,15 +64,14 @@ export class MessageProcessor {
     }
 
     /**
-     * Loads customer database from storage (in production, this would be a real database)
+     * Loads all databases from storage (in production, this would be a real database)
      */
-    loadCustomerDatabase() {
+    loadDatabases() {
         try {
             // In production, this would load from a database
-            // For now, we'll use a simple in-memory store
-            console.log('📊 Customer database loaded');
+            console.log('📊 All databases loaded');
         } catch (error) {
-            console.error('❌ Error loading customer database:', error);
+            console.error('❌ Error loading databases:', error);
         }
     }
 
@@ -141,15 +149,411 @@ export class MessageProcessor {
     }
 
     /**
-     * Gets customer record by phone number
+     * Creates a quote when AI provides pricing information
      */
-    getCustomerRecord(phoneNumber) {
-        return customerDatabase.find(c => c.phone_number === phoneNumber) || null;
+    createQuoteFromAI(phoneNumber, aiResponse, customer) {
+        try {
+            // Extract pricing information from AI response
+            const priceMatch = aiResponse.reply.match(/\$(\d+(?:\.\d{2})?)/);
+            const laborHoursMatch = aiResponse.reply.match(/(\d+(?:\.\d+)?)\s*hour/i);
+            
+            if (!priceMatch) {
+                console.log('💰 No price found in AI response, skipping quote creation');
+                return null;
+            }
+
+            const totalCost = parseFloat(priceMatch[1]);
+            const laborHours = laborHoursMatch ? parseFloat(laborHoursMatch[1]) : 1;
+            const laborCost = laborHours * this.settings.labor_rate;
+            const partsCost = Math.max(0, totalCost - laborCost);
+
+            // Extract service description from conversation
+            const serviceDescription = this.extractServiceDescription(aiResponse);
+
+            const quote = {
+                id: Date.now().toString(),
+                customer_name: customer?.full_name || 'Customer',
+                customer_phone: phoneNumber,
+                vehicle_info: customer?.vehicles[0]?.details || 'Vehicle',
+                description: serviceDescription,
+                labor_hours: laborHours,
+                labor_rate: this.settings.labor_rate,
+                parts_cost: partsCost,
+                total_cost: totalCost,
+                status: 'sent',
+                created_at: new Date().toISOString(),
+                expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
+            };
+
+            quotesDatabase.push(quote);
+            console.log('💰 Quote created automatically:', {
+                id: quote.id,
+                customer: quote.customer_name,
+                service: quote.description,
+                total: `$${quote.total_cost}`,
+                laborHours: quote.labor_hours
+            });
+
+            return quote;
+        } catch (error) {
+            console.error('❌ Error creating quote:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Books an appointment when customer confirms scheduling
+     */
+    bookAppointmentFromAI(phoneNumber, aiResponse, customer, preferredDate = null, preferredTime = null) {
+        try {
+            // Extract date/time information from conversation
+            const dateInfo = this.extractDateTimeInfo(aiResponse.reply);
+            
+            const appointment = {
+                id: Date.now().toString(),
+                customer_name: customer?.full_name || 'Customer',
+                customer_phone: phoneNumber,
+                vehicle_info: customer?.vehicles[0]?.details || 'Vehicle',
+                service_type: this.extractServiceDescription(aiResponse),
+                date: preferredDate || dateInfo.date || this.getNextBusinessDay(),
+                time: preferredTime || dateInfo.time || '09:00',
+                duration: 2, // Default 2 hours
+                status: 'scheduled',
+                notes: `Auto-booked from SMS conversation`,
+                created_at: new Date().toISOString()
+            };
+
+            appointmentsDatabase.push(appointment);
+            console.log('📅 Appointment booked automatically:', {
+                id: appointment.id,
+                customer: appointment.customer_name,
+                date: appointment.date,
+                time: appointment.time,
+                service: appointment.service_type
+            });
+
+            return appointment;
+        } catch (error) {
+            console.error('❌ Error booking appointment:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Generates tech sheet when quote is accepted
+     */
+    async generateTechSheetFromQuote(quote) {
+        try {
+            if (!this.openAI) {
+                console.log('⚠️ OpenAI not available, creating basic tech sheet');
+                return this.createBasicTechSheet(quote);
+            }
+
+            console.log('🔧 Generating tech sheet for accepted quote...');
+
+            const prompt = `${quote.description} for ${quote.vehicle_info}`;
+            
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.settings.openai_api_key}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: 'gpt-4o',
+                    temperature: 0.7,
+                    max_tokens: 1500,
+                    messages: [
+                        {
+                            role: 'system',
+                            content: `You are an expert automotive technician creating detailed repair guides. Generate a comprehensive tech sheet for the given job description. Format your response as JSON with these exact fields:
+
+{
+  "title": "Brief descriptive title",
+  "estimated_time": number (hours as decimal),
+  "difficulty": "Easy|Medium|Hard",
+  "tools_required": ["tool1", "tool2"],
+  "parts_needed": ["part1", "part2"],
+  "safety_warnings": ["warning1", "warning2"],
+  "step_by_step": ["step1", "step2", "step3"],
+  "tips": ["tip1", "tip2"]
+}
+
+Make the instructions detailed and professional for a working mechanic.`
+                        },
+                        {
+                            role: 'user',
+                            content: `Generate a detailed tech sheet for this automotive repair job: ${prompt}`
+                        }
+                    ]
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`OpenAI API error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            const content = data.choices[0]?.message?.content || '';
+            
+            let parsedResponse;
+            try {
+                const cleanResponse = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+                parsedResponse = JSON.parse(cleanResponse);
+            } catch (parseError) {
+                console.warn('Failed to parse AI response, using basic tech sheet');
+                return this.createBasicTechSheet(quote);
+            }
+
+            const techSheet = {
+                id: Date.now().toString(),
+                title: parsedResponse.title || `${quote.description} - ${quote.vehicle_info}`,
+                description: quote.description,
+                vehicle_info: quote.vehicle_info,
+                customer_name: quote.customer_name,
+                estimated_time: parsedResponse.estimated_time || quote.labor_hours,
+                difficulty: parsedResponse.difficulty || 'Medium',
+                tools_required: Array.isArray(parsedResponse.tools_required) ? parsedResponse.tools_required : ['Basic hand tools'],
+                parts_needed: Array.isArray(parsedResponse.parts_needed) ? parsedResponse.parts_needed : ['As specified'],
+                safety_warnings: Array.isArray(parsedResponse.safety_warnings) ? parsedResponse.safety_warnings : ['Follow safety procedures'],
+                step_by_step: Array.isArray(parsedResponse.step_by_step) ? parsedResponse.step_by_step : ['Follow standard procedures'],
+                tips: Array.isArray(parsedResponse.tips) ? parsedResponse.tips : ['Refer to service manual'],
+                created_at: new Date().toISOString(),
+                generated_by: 'ai',
+                source: 'quote_acceptance',
+                quote_id: quote.id
+            };
+
+            techSheetsDatabase.push(techSheet);
+            console.log('🔧 Tech sheet generated from quote:', {
+                id: techSheet.id,
+                title: techSheet.title,
+                difficulty: techSheet.difficulty,
+                estimatedTime: techSheet.estimated_time
+            });
+
+            return techSheet;
+        } catch (error) {
+            console.error('❌ Error generating tech sheet:', error);
+            return this.createBasicTechSheet(quote);
+        }
+    }
+
+    /**
+     * Creates a basic tech sheet when AI generation fails
+     */
+    createBasicTechSheet(quote) {
+        const techSheet = {
+            id: Date.now().toString(),
+            title: `${quote.description} - ${quote.vehicle_info}`,
+            description: quote.description,
+            vehicle_info: quote.vehicle_info,
+            customer_name: quote.customer_name,
+            estimated_time: quote.labor_hours,
+            difficulty: 'Medium',
+            tools_required: ['Basic hand tools', 'Socket set', 'Wrench set'],
+            parts_needed: ['As specified in quote'],
+            safety_warnings: ['Wear safety glasses', 'Use proper lifting techniques'],
+            step_by_step: [
+                'Assess the vehicle and confirm the issue',
+                'Gather all required tools and parts',
+                'Follow manufacturer specifications',
+                'Perform the repair work carefully',
+                'Test functionality after completion'
+            ],
+            tips: ['Take photos before disassembly', 'Keep parts organized'],
+            created_at: new Date().toISOString(),
+            generated_by: 'template',
+            source: 'quote_acceptance',
+            quote_id: quote.id
+        };
+
+        techSheetsDatabase.push(techSheet);
+        console.log('🔧 Basic tech sheet created:', techSheet.title);
+        return techSheet;
+    }
+
+    /**
+     * CRITICAL: Execute actions based on AI response
+     */
+    async executeAIActions(phoneNumber, aiResponse, customer) {
+        try {
+            console.log('🎯 Executing AI actions:', aiResponse.action);
+
+            // 1. CREATE QUOTE when AI provides pricing
+            if (aiResponse.reply.includes('$') && 
+                (aiResponse.intent.includes('Quote') || aiResponse.action.includes('quote'))) {
+                const quote = this.createQuoteFromAI(phoneNumber, aiResponse, customer);
+                if (quote) {
+                    console.log('💰 QUOTE CREATED:', `Quote #${quote.id} for $${quote.total_cost}`);
+                }
+            }
+
+            // 2. BOOK APPOINTMENT when customer confirms scheduling
+            if ((aiResponse.intent.includes('Booking') || aiResponse.intent.includes('Appointment')) &&
+                (aiResponse.action.includes('schedule') || aiResponse.action.includes('appointment'))) {
+                
+                // Extract date from recent conversation
+                const dateInfo = this.extractDateTimeFromConversation(phoneNumber);
+                const appointment = this.bookAppointmentFromAI(phoneNumber, aiResponse, customer, dateInfo.date, dateInfo.time);
+                
+                if (appointment) {
+                    console.log('📅 APPOINTMENT BOOKED:', `${appointment.date} at ${appointment.time}`);
+                    
+                    // Auto-generate tech sheet for the appointment
+                    if (customer?.vehicles.length > 0) {
+                        const mockQuote = {
+                            id: appointment.id,
+                            description: appointment.service_type,
+                            vehicle_info: appointment.vehicle_info,
+                            customer_name: appointment.customer_name,
+                            labor_hours: appointment.duration
+                        };
+                        
+                        const techSheet = await this.generateTechSheetFromQuote(mockQuote);
+                        if (techSheet) {
+                            console.log('🔧 TECH SHEET GENERATED for appointment:', techSheet.title);
+                        }
+                    }
+                }
+            }
+
+            // 3. ACCEPT QUOTE when customer says yes to a quote
+            if (aiResponse.intent.includes('Confirmation') && 
+                this.hasRecentQuote(phoneNumber)) {
+                
+                const recentQuote = this.getRecentQuote(phoneNumber);
+                if (recentQuote) {
+                    // Update quote status to accepted
+                    recentQuote.status = 'accepted';
+                    console.log('✅ QUOTE ACCEPTED:', `Quote #${recentQuote.id}`);
+                    
+                    // Generate tech sheet for accepted quote
+                    const techSheet = await this.generateTechSheetFromQuote(recentQuote);
+                    if (techSheet) {
+                        console.log('🔧 TECH SHEET GENERATED for accepted quote:', techSheet.title);
+                    }
+                    
+                    // Book appointment for the accepted quote
+                    const dateInfo = this.extractDateTimeFromConversation(phoneNumber);
+                    const appointment = this.bookAppointmentFromAI(phoneNumber, aiResponse, customer, dateInfo.date, dateInfo.time);
+                    if (appointment) {
+                        appointment.quote_id = recentQuote.id;
+                        console.log('📅 APPOINTMENT BOOKED for accepted quote');
+                    }
+                }
+            }
+
+        } catch (error) {
+            console.error('❌ Error executing AI actions:', error);
+        }
+    }
+
+    /**
+     * Helper methods for action execution
+     */
+    extractServiceDescription(aiResponse) {
+        // Extract service type from AI response or action
+        if (aiResponse.reply.toLowerCase().includes('tie rod')) return 'Tie rod end replacement';
+        if (aiResponse.reply.toLowerCase().includes('oil change')) return 'Oil change service';
+        if (aiResponse.reply.toLowerCase().includes('brake')) return 'Brake service';
+        if (aiResponse.reply.toLowerCase().includes('diagnostic')) return 'Vehicle diagnostic';
+        return 'General automotive service';
+    }
+
+    extractDateTimeInfo(text) {
+        const lowerText = text.toLowerCase();
+        const result = { date: null, time: null };
+        
+        // Extract day of week
+        if (lowerText.includes('monday')) result.date = this.getNextWeekday(1);
+        if (lowerText.includes('tuesday')) result.date = this.getNextWeekday(2);
+        if (lowerText.includes('wednesday')) result.date = this.getNextWeekday(3);
+        if (lowerText.includes('thursday')) result.date = this.getNextWeekday(4);
+        if (lowerText.includes('friday')) result.date = this.getNextWeekday(5);
+        
+        // Extract time
+        const timeMatch = text.match(/(\d{1,2}):?(\d{2})?\s*(am|pm)/i);
+        if (timeMatch) {
+            let hour = parseInt(timeMatch[1]);
+            const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+            const ampm = timeMatch[3].toLowerCase();
+            
+            if (ampm === 'pm' && hour !== 12) hour += 12;
+            if (ampm === 'am' && hour === 12) hour = 0;
+            
+            result.time = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+        }
+        
+        return result;
+    }
+
+    extractDateTimeFromConversation(phoneNumber) {
+        // Look through recent messages for date/time information
+        const recentMessages = messageStore
+            .filter(m => m.phone_number === phoneNumber)
+            .slice(0, 10);
+        
+        let date = null;
+        let time = null;
+        
+        for (const msg of recentMessages) {
+            const dateTime = this.extractDateTimeInfo(msg.body);
+            if (dateTime.date && !date) date = dateTime.date;
+            if (dateTime.time && !time) time = dateTime.time;
+        }
+        
+        return { 
+            date: date || this.getNextBusinessDay(), 
+            time: time || '09:00' 
+        };
+    }
+
+    getNextWeekday(targetDay) {
+        const today = new Date();
+        const currentDay = today.getDay();
+        let daysUntilTarget = targetDay - currentDay;
+        
+        if (daysUntilTarget <= 0) {
+            daysUntilTarget += 7; // Next week
+        }
+        
+        const targetDate = new Date(today);
+        targetDate.setDate(today.getDate() + daysUntilTarget);
+        return targetDate.toISOString().split('T')[0];
+    }
+
+    getNextBusinessDay() {
+        const today = new Date();
+        const tomorrow = new Date(today);
+        tomorrow.setDate(today.getDate() + 1);
+        
+        // If tomorrow is weekend, move to Monday
+        if (tomorrow.getDay() === 0) { // Sunday
+            tomorrow.setDate(tomorrow.getDate() + 1);
+        } else if (tomorrow.getDay() === 6) { // Saturday
+            tomorrow.setDate(tomorrow.getDate() + 2);
+        }
+        
+        return tomorrow.toISOString().split('T')[0];
+    }
+
+    hasRecentQuote(phoneNumber) {
+        return quotesDatabase.some(q => 
+            q.customer_phone === phoneNumber && 
+            q.status === 'sent' &&
+            new Date(q.created_at).getTime() > Date.now() - (24 * 60 * 60 * 1000) // Within 24 hours
+        );
+    }
+
+    getRecentQuote(phoneNumber) {
+        return quotesDatabase
+            .filter(q => q.customer_phone === phoneNumber && q.status === 'sent')
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
     }
 
     /**
      * Gets conversation history from OpenPhone API with improved error handling
-     * This ensures we always have the complete, authoritative conversation history
      */
     async getConversationHistoryFromOpenPhone(phoneNumber) {
         if (!this.openPhone) {
@@ -160,12 +564,10 @@ export class MessageProcessor {
         try {
             console.log(`📞 Fetching conversation history from OpenPhone for ${phoneNumber}`);
             
-            // Use the improved conversation history method
             const conversationMessages = await this.openPhone.getConversationHistory(phoneNumber, 10);
             
             console.log(`📚 Retrieved ${conversationMessages.length} messages from OpenPhone for context`);
             
-            // Log the conversation context for debugging
             if (conversationMessages.length > 0) {
                 console.log('💬 Conversation context:');
                 conversationMessages.forEach((msg, index) => {
@@ -208,7 +610,6 @@ export class MessageProcessor {
             console.log(`🔕 DND Status: ${isDndEnabled ? 'Enabled' : 'Disabled'}`);
 
             if (!isDndEnabled) {
-                // Just store the message, don't auto-respond
                 console.log('✅ Message received (no auto-response - DND disabled)');
                 return;
             }
@@ -231,13 +632,18 @@ export class MessageProcessor {
                     console.log('🎯 AI Response successful:', aiResponse);
 
                     // Update customer database with any collected information
+                    let customer = null;
                     if (aiResponse.customerData) {
-                        this.updateCustomerRecord(phoneNumber, aiResponse.customerData, messageBody);
+                        customer = this.updateCustomerRecord(phoneNumber, aiResponse.customerData, messageBody);
+                    } else {
+                        customer = this.getCustomerRecord(phoneNumber);
                     }
+
+                    // 🎯 CRITICAL: Execute actions based on AI response
+                    await this.executeAIActions(phoneNumber, aiResponse, customer);
                 }
                 catch (aiError) {
                     console.error('❌ AI processing failed, using emergency fallback:', aiError);
-                    // Emergency fallback when AI completely fails
                     aiResponse = this.getEmergencyFallback(messageBody, conversationHistory);
                 }
 
@@ -280,18 +686,6 @@ export class MessageProcessor {
                         console.log(`💬 Message: "${messageBody}"`);
                         console.log('🚨🚨🚨 URGENT ACTION REQUIRED 🚨🚨🚨');
                     }
-
-                    // Log customer data collection progress
-                    if (aiResponse.intent.includes('Data Collection')) {
-                        console.log('📋 CUSTOMER DATA COLLECTION IN PROGRESS');
-                        const customer = this.getCustomerRecord(phoneNumber);
-                        if (customer) {
-                            console.log(`👤 Customer: ${customer.full_name || 'Name pending'}`);
-                            console.log(`🏠 Address: ${customer.address || 'Not collected'}`);
-                            console.log(`🚗 Vehicles: ${customer.vehicles.length} on file`);
-                            console.log(`🔄 Repeat Customer: ${customer.is_repeat_customer !== null ? (customer.is_repeat_customer ? 'Yes' : 'No') : 'Unknown'}`);
-                        }
-                    }
                 }
                 catch (smsError) {
                     console.error('❌ Failed to send SMS response:', smsError);
@@ -302,10 +696,6 @@ export class MessageProcessor {
                     console.log(`🎯 Intent: ${aiResponse.intent}`);
                     console.log(`📋 Action: ${aiResponse.action}`);
                     console.log('❌ SMS SENDING FAILED - MANUAL RESPONSE REQUIRED');
-
-                    if (aiResponse.intent === 'Emergency' || aiResponse.action.includes('URGENT')) {
-                        console.log('🚨🚨🚨 EMERGENCY - IMMEDIATE MANUAL RESPONSE REQUIRED 🚨🚨🚨');
-                    }
                 }
             }
             else {
@@ -318,14 +708,10 @@ export class MessageProcessor {
         }
         catch (error) {
             console.error('❌ Error processing message:', error);
-
-            // Log the message details for manual follow-up
             console.log('📝 MESSAGE PROCESSING FAILED:');
             console.log(`📱 From: ${phoneNumber}`);
             console.log(`💬 Message: "${messageBody}"`);
             console.log('⚠️  MANUAL RESPONSE REQUIRED');
-
-            // Don't throw the error - we want the webhook to return 200 to OpenPhone
         }
     }
 
@@ -341,6 +727,34 @@ export class MessageProcessor {
         return [...customerDatabase].sort((a, b) => 
             new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
         );
+    }
+
+    // Method to get quotes database (for API endpoint)
+    getQuotes() {
+        return [...quotesDatabase].sort((a, b) => 
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+    }
+
+    // Method to get appointments database (for API endpoint)
+    getAppointments() {
+        return [...appointmentsDatabase].sort((a, b) => 
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+    }
+
+    // Method to get tech sheets database (for API endpoint)
+    getTechSheets() {
+        return [...techSheetsDatabase].sort((a, b) => 
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+    }
+
+    /**
+     * Gets customer record by phone number
+     */
+    getCustomerRecord(phoneNumber) {
+        return customerDatabase.find(c => c.phone_number === phoneNumber) || null;
     }
 
     // Method to mark message as read
