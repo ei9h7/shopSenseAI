@@ -17,7 +17,7 @@ export class OpenPhoneService {
             console.log(`   To: ${to}`);
             console.log(`   Message: ${message.substring(0, 50)}...`);
 
-            // Use the correct OpenPhone API format
+            // Use the correct OpenPhone API format for sending messages
             const response = await axios.post(`${OPENPHONE_API_URL}/messages`, {
                 content: message,
                 from: this.phoneNumber,
@@ -57,8 +57,8 @@ export class OpenPhoneService {
     }
     
     /**
-     * Gets messages from OpenPhone API with corrected parameters
-     * Based on OpenPhone API v1 documentation
+     * Gets messages from OpenPhone API following the official documentation
+     * https://www.openphone.com/docs/mdx/api-reference/messages/list-messages
      */
     async getMessages(phoneNumber = null, limit = 50) {
         try {
@@ -66,50 +66,83 @@ export class OpenPhoneService {
             console.log(`   Phone filter: ${phoneNumber || 'All conversations'}`);
             console.log(`   Limit: ${limit}`);
             
-            // Build the correct API URL with query parameters
-            const url = new URL(`${OPENPHONE_API_URL}/messages`);
+            // Build query parameters according to OpenPhone API docs
+            const params = new URLSearchParams();
             
-            // Add limit parameter
-            url.searchParams.append('limit', limit.toString());
+            // Add limit parameter (required)
+            params.append('limit', Math.min(limit, 100).toString()); // Max 100 per docs
             
-            // If we have a specific phone number, we'll filter client-side
-            // as OpenPhone API doesn't support direct phone number filtering in the messages endpoint
+            // Add phone number filter if provided
+            // According to docs, we can filter by phoneNumberId, but we need to convert phone number to phoneNumberId
+            // For now, we'll fetch all and filter client-side since phone number filtering requires phoneNumberId
             
-            console.log(`📡 Requesting: ${url.toString()}`);
+            // Optional: Add other filters from the docs
+            // params.append('direction', 'inbound'); // or 'outbound'
+            // params.append('status', 'received'); // or 'sent', 'failed', etc.
             
-            const response = await axios.get(url.toString(), {
+            const url = `${OPENPHONE_API_URL}/messages?${params.toString()}`;
+            console.log(`📡 Requesting: ${url}`);
+            
+            const response = await axios.get(url, {
                 headers: {
                     'Authorization': this.apiKey,
-                    'Accept': 'application/json'
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
                 },
                 timeout: 15000
             });
             
             console.log(`✅ OpenPhone Messages API Response: ${response.status}`);
-            console.log(`📊 Response data structure:`, Object.keys(response.data || {}));
+            console.log(`📊 Response structure:`, {
+                hasData: !!response.data,
+                dataKeys: Object.keys(response.data || {}),
+                dataType: Array.isArray(response.data?.data) ? 'array' : typeof response.data?.data
+            });
             
             let messages = [];
             
-            // Handle OpenPhone API response format
+            // Handle OpenPhone API response format according to docs
+            // The response should be: { data: [...messages], meta: {...} }
             if (response.data?.data && Array.isArray(response.data.data)) {
                 messages = response.data.data;
-            } else if (Array.isArray(response.data)) {
-                messages = response.data;
+                console.log(`📨 Retrieved ${messages.length} messages from OpenPhone API`);
+                
+                // Log sample message structure for debugging
+                if (messages.length > 0) {
+                    console.log(`📄 Sample message structure:`, {
+                        id: messages[0].id,
+                        from: messages[0].from,
+                        to: messages[0].to,
+                        direction: messages[0].direction,
+                        body: messages[0].body?.substring(0, 30) + '...',
+                        createdAt: messages[0].createdAt,
+                        availableFields: Object.keys(messages[0])
+                    });
+                }
             } else {
                 console.warn('⚠️ Unexpected response format from OpenPhone API');
-                console.log('📄 Full response:', response.data);
-                messages = [];
+                console.log('📄 Full response data:', response.data);
+                
+                // Try alternative response formats
+                if (Array.isArray(response.data)) {
+                    messages = response.data;
+                    console.log(`📨 Retrieved ${messages.length} messages (direct array format)`);
+                } else {
+                    console.error('❌ Could not parse messages from OpenPhone response');
+                    return [];
+                }
             }
-            
-            console.log(`📨 Retrieved ${messages.length} total messages from OpenPhone`);
             
             // If we have a specific phone number, filter messages client-side
             if (phoneNumber && messages.length > 0) {
                 const filteredMessages = messages.filter(msg => {
-                    // Check both 'from' and 'to' fields to capture the full conversation
-                    const msgFrom = msg.from || '';
-                    const msgTo = msg.to || '';
-                    return msgFrom === phoneNumber || msgTo === phoneNumber;
+                    // Normalize phone numbers for comparison (remove +, spaces, etc.)
+                    const normalizePhone = (phone) => phone?.replace(/[\s\-\(\)\+]/g, '') || '';
+                    const targetPhone = normalizePhone(phoneNumber);
+                    const msgFrom = normalizePhone(msg.from);
+                    const msgTo = normalizePhone(msg.to);
+                    
+                    return msgFrom === targetPhone || msgTo === targetPhone;
                 });
                 
                 console.log(`🎯 Filtered to ${filteredMessages.length} messages for ${phoneNumber}`);
@@ -119,19 +152,48 @@ export class OpenPhoneService {
             return messages;
             
         } catch (error) {
-            console.error('❌ OpenPhone Get Messages Error:', error.response?.status, error.response?.data);
+            console.error('❌ OpenPhone Get Messages Error:', error.response?.status);
             
-            // Log detailed error information for debugging
-            if (error.response?.data?.errors) {
-                console.error('❌ Detailed API errors:', error.response.data.errors);
+            // Enhanced error logging for debugging
+            if (error.response) {
+                console.error('❌ Response Status:', error.response.status);
+                console.error('❌ Response Headers:', error.response.headers);
+                console.error('❌ Response Data:', error.response.data);
+                
+                // Log specific error details if available
+                if (error.response.data?.errors) {
+                    console.error('❌ API Error Details:');
+                    error.response.data.errors.forEach((err, index) => {
+                        console.error(`   Error ${index + 1}:`, err);
+                    });
+                }
+                
+                // Check for specific error codes mentioned in OpenPhone docs
+                if (error.response.status === 400) {
+                    console.error('❌ Bad Request - Check query parameters');
+                    console.error('   - Ensure limit is between 1-100');
+                    console.error('   - Check phoneNumberId format if used');
+                    console.error('   - Verify other query parameters');
+                }
+                
+                if (error.response.status === 401) {
+                    console.error('❌ Unauthorized - Check API key');
+                    console.error(`   - API Key preview: ${this.apiKey.substring(0, 8)}...`);
+                }
+                
+                if (error.response.status === 403) {
+                    console.error('❌ Forbidden - Check API key permissions');
+                }
+                
+                if (error.response.status === 429) {
+                    console.error('❌ Rate Limited - Too many requests');
+                }
+            } else if (error.request) {
+                console.error('❌ Network Error - No response received');
+                console.error('   Request details:', error.request);
+            } else {
+                console.error('❌ Request Setup Error:', error.message);
             }
-            
-            console.error('❌ Full error details:', {
-                status: error.response?.status,
-                statusText: error.response?.statusText,
-                data: error.response?.data,
-                message: error.message
-            });
             
             // Return empty array as fallback instead of throwing
             console.log('🔄 Returning empty message history due to API error');
@@ -148,7 +210,7 @@ export class OpenPhoneService {
             console.log(`💬 Getting conversation history for ${phoneNumber}`);
             
             // Get all recent messages and filter for this conversation
-            const allMessages = await this.getMessages(null, 100);
+            const allMessages = await this.getMessages(null, Math.min(limit * 3, 100)); // Get more to ensure we have enough after filtering
             
             if (allMessages.length === 0) {
                 console.log('📭 No messages retrieved from OpenPhone API');
@@ -158,9 +220,13 @@ export class OpenPhoneService {
             // Filter and format messages for this specific conversation
             const conversationMessages = allMessages
                 .filter(msg => {
-                    const msgFrom = msg.from || '';
-                    const msgTo = msg.to || '';
-                    return msgFrom === phoneNumber || msgTo === phoneNumber;
+                    // Normalize phone numbers for comparison
+                    const normalizePhone = (phone) => phone?.replace(/[\s\-\(\)\+]/g, '') || '';
+                    const targetPhone = normalizePhone(phoneNumber);
+                    const msgFrom = normalizePhone(msg.from);
+                    const msgTo = normalizePhone(msg.to);
+                    
+                    return msgFrom === targetPhone || msgTo === targetPhone;
                 })
                 .map(msg => ({
                     id: msg.id || Date.now().toString(),
