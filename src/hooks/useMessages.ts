@@ -15,12 +15,15 @@ import toast from 'react-hot-toast'
  * - Emergency message detection and filtering
  * - Real-time updates with 5-second polling interval
  * 
- * The hook connects directly to the production webhook server at torquegpt.onrender.com
- * and provides a seamless interface for message management in the frontend.
+ * The hook connects to the appropriate backend server based on the environment:
+ * - Development: http://localhost:10000
+ * - Production: https://torquegpt.onrender.com
  */
 
-// Production API base URL - no more localhost complexity
-const API_BASE_URL = 'https://torquegpt.onrender.com'
+// Dynamic API base URL based on environment
+const API_BASE_URL = import.meta.env.MODE === 'production' 
+  ? 'https://torquegpt.onrender.com' 
+  : 'http://localhost:10000'
 
 export const useMessages = () => {
   const [messages, setMessages] = useState<Message[]>([])
