@@ -149,32 +149,85 @@ export class MessageProcessor {
     }
 
     /**
-     * Creates a quote when AI provides pricing information
+     * 🎯 ENHANCED: Creates a quote when AI provides pricing information
+     * FIXED: Better price detection and quote creation logic
      */
-    createQuoteFromAI(phoneNumber, aiResponse, customer) {
+    createQuoteFromAI(phoneNumber, aiResponse, customer, conversationHistory = []) {
         try {
-            // Extract pricing information from AI response
-            const priceMatch = aiResponse.reply.match(/\$(\d+(?:\.\d{2})?)/);
-            const laborHoursMatch = aiResponse.reply.match(/(\d+(?:\.\d+)?)\s*hour/i);
-            
-            if (!priceMatch) {
-                console.log('💰 No price found in AI response, skipping quote creation');
+            console.log('💰 Analyzing AI response for quote creation...');
+            console.log(`   AI Reply: "${aiResponse.reply}"`);
+            console.log(`   AI Intent: "${aiResponse.intent}"`);
+            console.log(`   AI Action: "${aiResponse.action}"`);
+
+            // ENHANCED: Multiple ways to detect pricing
+            const pricePatterns = [
+                /\$(\d+(?:\.\d{2})?)/g,                    // $120, $120.00
+                /(\d+)\s*dollars?/gi,                      // 120 dollars
+                /around\s*\$?(\d+)/gi,                     // around $120
+                /about\s*\$?(\d+)/gi,                      // about $120
+                /estimate.*\$?(\d+)/gi,                    // estimate $120
+                /total.*\$?(\d+)/gi,                       // total $120
+                /cost.*\$?(\d+)/gi,                        // cost $120
+                /price.*\$?(\d+)/gi                        // price $120
+            ];
+
+            let totalCost = null;
+            let priceText = '';
+
+            // Try each pattern to find pricing
+            for (const pattern of pricePatterns) {
+                const matches = aiResponse.reply.match(pattern);
+                if (matches) {
+                    // Extract the number from the match
+                    const numberMatch = matches[0].match(/(\d+(?:\.\d{2})?)/);
+                    if (numberMatch) {
+                        totalCost = parseFloat(numberMatch[1]);
+                        priceText = matches[0];
+                        console.log(`💰 Found price: ${priceText} = $${totalCost}`);
+                        break;
+                    }
+                }
+            }
+
+            if (!totalCost || totalCost < 10) {
+                console.log('💰 No valid price found in AI response (minimum $10), skipping quote creation');
                 return null;
             }
 
-            const totalCost = parseFloat(priceMatch[1]);
-            const laborHours = laborHoursMatch ? parseFloat(laborHoursMatch[1]) : 1;
+            // Extract labor hours from AI response or conversation
+            const laborHoursPatterns = [
+                /(\d+(?:\.\d+)?)\s*hours?/gi,
+                /(\d+(?:\.\d+)?)\s*hrs?/gi,
+                /(\d+(?:\.\d+)?)\s*hour/gi
+            ];
+
+            let laborHours = 1; // Default minimum
+            for (const pattern of laborHoursPatterns) {
+                const match = aiResponse.reply.match(pattern);
+                if (match) {
+                    laborHours = parseFloat(match[1]);
+                    console.log(`⏰ Found labor hours: ${laborHours}`);
+                    break;
+                }
+            }
+
+            // Calculate costs
             const laborCost = laborHours * this.settings.labor_rate;
             const partsCost = Math.max(0, totalCost - laborCost);
 
-            // Extract service description from conversation
-            const serviceDescription = this.extractServiceDescription(aiResponse);
+            // Extract service description from conversation and AI response
+            const serviceDescription = this.extractServiceDescription(aiResponse, conversationHistory);
+
+            // Get vehicle info from customer record or conversation
+            const vehicleInfo = customer?.vehicles[0]?.details || 
+                               this.extractVehicleFromConversation(conversationHistory) || 
+                               'Vehicle';
 
             const quote = {
                 id: Date.now().toString(),
                 customer_name: customer?.full_name || 'Customer',
                 customer_phone: phoneNumber,
-                vehicle_info: customer?.vehicles[0]?.details || 'Vehicle',
+                vehicle_info: vehicleInfo,
                 description: serviceDescription,
                 labor_hours: laborHours,
                 labor_rate: this.settings.labor_rate,
@@ -186,12 +239,14 @@ export class MessageProcessor {
             };
 
             quotesDatabase.push(quote);
-            console.log('💰 Quote created automatically:', {
+            console.log('💰 ✅ QUOTE CREATED SUCCESSFULLY:', {
                 id: quote.id,
                 customer: quote.customer_name,
+                vehicle: quote.vehicle_info,
                 service: quote.description,
                 total: `$${quote.total_cost}`,
-                laborHours: quote.labor_hours
+                laborHours: quote.labor_hours,
+                partsCost: `$${quote.parts_cost}`
             });
 
             return quote;
@@ -202,34 +257,56 @@ export class MessageProcessor {
     }
 
     /**
-     * Books an appointment when customer confirms scheduling
+     * 🎯 ENHANCED: Books an appointment when customer confirms scheduling
+     * FIXED: Better scheduling detection and appointment creation
      */
-    bookAppointmentFromAI(phoneNumber, aiResponse, customer, preferredDate = null, preferredTime = null) {
+    bookAppointmentFromAI(phoneNumber, aiResponse, customer, conversationHistory = []) {
         try {
-            // Extract date/time information from conversation
-            const dateInfo = this.extractDateTimeInfo(aiResponse.reply);
-            
+            console.log('📅 Analyzing conversation for appointment booking...');
+            console.log(`   AI Reply: "${aiResponse.reply}"`);
+            console.log(`   AI Intent: "${aiResponse.intent}"`);
+            console.log(`   AI Action: "${aiResponse.action}"`);
+
+            // Extract date/time information from entire conversation
+            const dateTimeInfo = this.extractDateTimeFromConversation(phoneNumber, conversationHistory);
+            console.log('📅 Extracted date/time info:', dateTimeInfo);
+
+            // Get service description and vehicle info
+            const serviceDescription = this.extractServiceDescription(aiResponse, conversationHistory);
+            const vehicleInfo = customer?.vehicles[0]?.details || 
+                               this.extractVehicleFromConversation(conversationHistory) || 
+                               'Vehicle';
+
+            // Determine duration based on service type
+            let duration = 2; // Default 2 hours
+            if (serviceDescription.toLowerCase().includes('oil change')) duration = 1;
+            if (serviceDescription.toLowerCase().includes('brake')) duration = 2;
+            if (serviceDescription.toLowerCase().includes('tie rod')) duration = 1.5;
+            if (serviceDescription.toLowerCase().includes('diagnostic')) duration = 1;
+
             const appointment = {
                 id: Date.now().toString(),
                 customer_name: customer?.full_name || 'Customer',
                 customer_phone: phoneNumber,
-                vehicle_info: customer?.vehicles[0]?.details || 'Vehicle',
-                service_type: this.extractServiceDescription(aiResponse),
-                date: preferredDate || dateInfo.date || this.getNextBusinessDay(),
-                time: preferredTime || dateInfo.time || '09:00',
-                duration: 2, // Default 2 hours
+                vehicle_info: vehicleInfo,
+                service_type: serviceDescription,
+                date: dateTimeInfo.date,
+                time: dateTimeInfo.time,
+                duration: duration,
                 status: 'scheduled',
                 notes: `Auto-booked from SMS conversation`,
                 created_at: new Date().toISOString()
             };
 
             appointmentsDatabase.push(appointment);
-            console.log('📅 Appointment booked automatically:', {
+            console.log('📅 ✅ APPOINTMENT BOOKED SUCCESSFULLY:', {
                 id: appointment.id,
                 customer: appointment.customer_name,
+                vehicle: appointment.vehicle_info,
+                service: appointment.service_type,
                 date: appointment.date,
                 time: appointment.time,
-                service: appointment.service_type
+                duration: `${appointment.duration} hours`
             });
 
             return appointment;
@@ -240,18 +317,345 @@ export class MessageProcessor {
     }
 
     /**
-     * Generates tech sheet when quote is accepted
+     * 🎯 ENHANCED: Execute actions based on AI response with better detection
+     * FIXED: More aggressive action detection and execution
      */
-    async generateTechSheetFromQuote(quote) {
+    async executeAIActions(phoneNumber, aiResponse, customer, conversationHistory = []) {
+        try {
+            console.log('🎯 ===== EXECUTING AI ACTIONS =====');
+            console.log(`📱 Phone: ${phoneNumber}`);
+            console.log(`🤖 AI Reply: "${aiResponse.reply}"`);
+            console.log(`🎯 AI Intent: "${aiResponse.intent}"`);
+            console.log(`📋 AI Action: "${aiResponse.action}"`);
+            console.log('=====================================');
+
+            let actionsExecuted = [];
+
+            // 1. 💰 CREATE QUOTE - Enhanced detection
+            const shouldCreateQuote = 
+                aiResponse.reply.includes('$') ||                                    // Contains price
+                aiResponse.intent.toLowerCase().includes('quote') ||                 // Intent mentions quote
+                aiResponse.action.toLowerCase().includes('quote') ||                 // Action mentions quote
+                aiResponse.reply.toLowerCase().includes('estimate') ||               // Contains estimate
+                aiResponse.reply.toLowerCase().includes('cost') ||                   // Contains cost
+                aiResponse.reply.toLowerCase().includes('price') ||                  // Contains price
+                aiResponse.reply.toLowerCase().includes('total') ||                  // Contains total
+                (aiResponse.reply.toLowerCase().includes('hour') && 
+                 aiResponse.reply.toLowerCase().includes('80'));                     // Contains hour rate
+
+            if (shouldCreateQuote) {
+                console.log('💰 QUOTE CREATION TRIGGERED');
+                const quote = this.createQuoteFromAI(phoneNumber, aiResponse, customer, conversationHistory);
+                if (quote) {
+                    actionsExecuted.push(`Quote #${quote.id} created for $${quote.total_cost}`);
+                }
+            }
+
+            // 2. 📅 BOOK APPOINTMENT - Enhanced detection
+            const shouldBookAppointment = 
+                aiResponse.intent.toLowerCase().includes('booking') ||               // Intent mentions booking
+                aiResponse.intent.toLowerCase().includes('appointment') ||           // Intent mentions appointment
+                aiResponse.intent.toLowerCase().includes('schedule') ||              // Intent mentions schedule
+                aiResponse.action.toLowerCase().includes('schedule') ||              // Action mentions schedule
+                aiResponse.action.toLowerCase().includes('appointment') ||           // Action mentions appointment
+                aiResponse.reply.toLowerCase().includes('scheduled') ||              // Reply mentions scheduled
+                aiResponse.reply.toLowerCase().includes('appointment') ||            // Reply mentions appointment
+                this.hasSchedulingContext(conversationHistory);                     // Conversation has scheduling context
+
+            if (shouldBookAppointment) {
+                console.log('📅 APPOINTMENT BOOKING TRIGGERED');
+                const appointment = this.bookAppointmentFromAI(phoneNumber, aiResponse, customer, conversationHistory);
+                if (appointment) {
+                    actionsExecuted.push(`Appointment booked for ${appointment.date} at ${appointment.time}`);
+                    
+                    // 🔧 AUTO-GENERATE TECH SHEET for appointment
+                    console.log('🔧 AUTO-GENERATING TECH SHEET for appointment...');
+                    const techSheet = await this.generateTechSheetFromService(appointment);
+                    if (techSheet) {
+                        actionsExecuted.push(`Tech sheet "${techSheet.title}" generated`);
+                    }
+                }
+            }
+
+            // 3. ✅ ACCEPT QUOTE - When customer says yes to a recent quote
+            const shouldAcceptQuote = 
+                (aiResponse.intent.toLowerCase().includes('confirmation') ||         // Intent is confirmation
+                 aiResponse.intent.toLowerCase().includes('accept') ||               // Intent is accept
+                 this.isPositiveResponse(aiResponse.reply)) &&                      // Reply is positive
+                this.hasRecentQuote(phoneNumber);                                   // Has recent quote
+
+            if (shouldAcceptQuote) {
+                console.log('✅ QUOTE ACCEPTANCE TRIGGERED');
+                const recentQuote = this.getRecentQuote(phoneNumber);
+                if (recentQuote) {
+                    // Update quote status to accepted
+                    recentQuote.status = 'accepted';
+                    console.log('✅ QUOTE ACCEPTED:', `Quote #${recentQuote.id}`);
+                    actionsExecuted.push(`Quote #${recentQuote.id} accepted`);
+                    
+                    // 🔧 Generate tech sheet for accepted quote
+                    console.log('🔧 GENERATING TECH SHEET for accepted quote...');
+                    const techSheet = await this.generateTechSheetFromQuote(recentQuote);
+                    if (techSheet) {
+                        actionsExecuted.push(`Tech sheet "${techSheet.title}" generated for accepted quote`);
+                    }
+                    
+                    // 📅 Book appointment for the accepted quote if scheduling context exists
+                    if (this.hasSchedulingContext(conversationHistory)) {
+                        console.log('📅 BOOKING APPOINTMENT for accepted quote...');
+                        const appointment = this.bookAppointmentFromAI(phoneNumber, aiResponse, customer, conversationHistory);
+                        if (appointment) {
+                            appointment.quote_id = recentQuote.id;
+                            actionsExecuted.push(`Appointment booked for accepted quote`);
+                        }
+                    }
+                }
+            }
+
+            // 4. 🔧 STANDALONE TECH SHEET - When service is described in detail
+            const shouldCreateTechSheet = 
+                !shouldBookAppointment &&                                           // Not already creating from appointment
+                !shouldAcceptQuote &&                                               // Not already creating from quote
+                (aiResponse.reply.toLowerCase().includes('repair') ||               // Contains repair
+                 aiResponse.reply.toLowerCase().includes('replace') ||              // Contains replace
+                 aiResponse.reply.toLowerCase().includes('service') ||              // Contains service
+                 aiResponse.reply.toLowerCase().includes('fix') ||                  // Contains fix
+                 this.hasDetailedServiceDescription(conversationHistory));          // Has detailed service description
+
+            if (shouldCreateTechSheet) {
+                console.log('🔧 STANDALONE TECH SHEET TRIGGERED');
+                const serviceDescription = this.extractServiceDescription(aiResponse, conversationHistory);
+                const vehicleInfo = customer?.vehicles[0]?.details || 
+                                   this.extractVehicleFromConversation(conversationHistory) || 
+                                   'Vehicle';
+                
+                const mockService = {
+                    id: Date.now().toString(),
+                    description: serviceDescription,
+                    vehicle_info: vehicleInfo,
+                    customer_name: customer?.full_name || 'Customer',
+                    labor_hours: 2
+                };
+                
+                const techSheet = await this.generateTechSheetFromService(mockService);
+                if (techSheet) {
+                    actionsExecuted.push(`Tech sheet "${techSheet.title}" generated`);
+                }
+            }
+
+            // Log all executed actions
+            if (actionsExecuted.length > 0) {
+                console.log('🎯 ✅ ACTIONS EXECUTED SUCCESSFULLY:');
+                actionsExecuted.forEach((action, index) => {
+                    console.log(`   ${index + 1}. ${action}`);
+                });
+            } else {
+                console.log('🎯 ⚠️ No actions executed - criteria not met');
+                console.log('   Criteria checked:');
+                console.log(`   - Should create quote: ${shouldCreateQuote}`);
+                console.log(`   - Should book appointment: ${shouldBookAppointment}`);
+                console.log(`   - Should accept quote: ${shouldAcceptQuote}`);
+                console.log(`   - Should create tech sheet: ${shouldCreateTechSheet}`);
+            }
+
+        } catch (error) {
+            console.error('❌ Error executing AI actions:', error);
+        }
+    }
+
+    /**
+     * Helper methods for enhanced action detection
+     */
+    isPositiveResponse(reply) {
+        const positiveWords = ['yes', 'sure', 'okay', 'ok', 'sounds good', 'that works', 
+                              'perfect', 'great', 'excellent', 'please', 'let\'s do it',
+                              'go ahead', 'book it', 'schedule it'];
+        const lowerReply = reply.toLowerCase();
+        return positiveWords.some(word => lowerReply.includes(word));
+    }
+
+    hasSchedulingContext(conversationHistory) {
+        const schedulingWords = ['thursday', 'wednesday', 'monday', 'tuesday', 'friday',
+                                'tomorrow', 'next week', 'schedule', 'appointment', 'book',
+                                'available', 'time', 'when can'];
+        const conversationText = conversationHistory.map(msg => msg.body).join(' ').toLowerCase();
+        return schedulingWords.some(word => conversationText.includes(word));
+    }
+
+    hasDetailedServiceDescription(conversationHistory) {
+        const serviceWords = ['tie rod', 'brake', 'oil change', 'transmission', 'engine',
+                             'repair', 'replace', 'fix', 'service', 'maintenance', 'diagnostic'];
+        const conversationText = conversationHistory.map(msg => msg.body).join(' ').toLowerCase();
+        return serviceWords.some(word => conversationText.includes(word));
+    }
+
+    extractVehicleFromConversation(conversationHistory) {
+        const conversationText = conversationHistory.map(msg => msg.body).join(' ');
+        
+        // Look for vehicle patterns
+        const vehiclePatterns = [
+            /(\d{4})\s+(ford|chevy|chevrolet|dodge|toyota|honda|nissan|bmw|mercedes|audi|volkswagen|vw|subaru|mazda|hyundai|kia|jeep|ram|gmc|cadillac|buick|lincoln|acura|infiniti|lexus|volvo|porsche|ferrari|lamborghini|maserati|bentley|rolls.royce)\s+(\w+)/gi,
+            /(ford|chevy|chevrolet|dodge|toyota|honda|nissan|bmw|mercedes|audi|volkswagen|vw|subaru|mazda|hyundai|kia|jeep|ram|gmc|cadillac|buick|lincoln|acura|infiniti|lexus|volvo|porsche|ferrari|lamborghini|maserati|bentley|rolls.royce)\s+(\w+)/gi
+        ];
+
+        for (const pattern of vehiclePatterns) {
+            const match = conversationText.match(pattern);
+            if (match) {
+                return match[0];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Enhanced service description extraction
+     */
+    extractServiceDescription(aiResponse, conversationHistory = []) {
+        // Combine AI response and conversation history
+        const allText = [
+            aiResponse.reply,
+            aiResponse.action,
+            ...conversationHistory.map(msg => msg.body)
+        ].join(' ').toLowerCase();
+
+        // Service type detection with priority
+        const serviceTypes = [
+            { keywords: ['tie rod'], description: 'Tie rod end replacement' },
+            { keywords: ['brake pad', 'brake'], description: 'Brake service' },
+            { keywords: ['oil change', 'oil'], description: 'Oil change service' },
+            { keywords: ['transmission'], description: 'Transmission service' },
+            { keywords: ['engine'], description: 'Engine diagnostic/repair' },
+            { keywords: ['battery'], description: 'Battery service' },
+            { keywords: ['tire'], description: 'Tire service' },
+            { keywords: ['diagnostic'], description: 'Vehicle diagnostic' },
+            { keywords: ['tune up', 'tuneup'], description: 'Tune-up service' },
+            { keywords: ['inspection'], description: 'Vehicle inspection' },
+            { keywords: ['maintenance'], description: 'General maintenance' }
+        ];
+
+        for (const serviceType of serviceTypes) {
+            if (serviceType.keywords.some(keyword => allText.includes(keyword))) {
+                return serviceType.description;
+            }
+        }
+
+        return 'General automotive service';
+    }
+
+    /**
+     * Enhanced date/time extraction from conversation
+     */
+    extractDateTimeFromConversation(phoneNumber, conversationHistory = []) {
+        // Look through recent messages for date/time information
+        const allMessages = [
+            ...messageStore.filter(m => m.phone_number === phoneNumber).slice(0, 10),
+            ...conversationHistory
+        ];
+        
+        let date = null;
+        let time = null;
+        
+        for (const msg of allMessages) {
+            const dateTime = this.extractDateTimeInfo(msg.body);
+            if (dateTime.date && !date) date = dateTime.date;
+            if (dateTime.time && !time) time = dateTime.time;
+        }
+        
+        return { 
+            date: date || this.getNextBusinessDay(), 
+            time: time || '09:00' 
+        };
+    }
+
+    extractDateTimeInfo(text) {
+        const lowerText = text.toLowerCase();
+        const result = { date: null, time: null };
+        
+        // Extract day of week
+        if (lowerText.includes('monday')) result.date = this.getNextWeekday(1);
+        if (lowerText.includes('tuesday')) result.date = this.getNextWeekday(2);
+        if (lowerText.includes('wednesday')) result.date = this.getNextWeekday(3);
+        if (lowerText.includes('thursday')) result.date = this.getNextWeekday(4);
+        if (lowerText.includes('friday')) result.date = this.getNextWeekday(5);
+        if (lowerText.includes('tomorrow')) {
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            result.date = tomorrow.toISOString().split('T')[0];
+        }
+        
+        // Extract time
+        const timeMatch = text.match(/(\d{1,2}):?(\d{2})?\s*(am|pm)/i);
+        if (timeMatch) {
+            let hour = parseInt(timeMatch[1]);
+            const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+            const ampm = timeMatch[3].toLowerCase();
+            
+            if (ampm === 'pm' && hour !== 12) hour += 12;
+            if (ampm === 'am' && hour === 12) hour = 0;
+            
+            result.time = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+        }
+        
+        return result;
+    }
+
+    getNextWeekday(targetDay) {
+        const today = new Date();
+        const currentDay = today.getDay();
+        let daysUntilTarget = targetDay - currentDay;
+        
+        if (daysUntilTarget <= 0) {
+            daysUntilTarget += 7; // Next week
+        }
+        
+        const targetDate = new Date(today);
+        targetDate.setDate(today.getDate() + daysUntilTarget);
+        return targetDate.toISOString().split('T')[0];
+    }
+
+    getNextBusinessDay() {
+        const today = new Date();
+        const tomorrow = new Date(today);
+        tomorrow.setDate(today.getDate() + 1);
+        
+        // If tomorrow is weekend, move to Monday
+        if (tomorrow.getDay() === 0) { // Sunday
+            tomorrow.setDate(tomorrow.getDate() + 1);
+        } else if (tomorrow.getDay() === 6) { // Saturday
+            tomorrow.setDate(tomorrow.getDate() + 2);
+        }
+        
+        return tomorrow.toISOString().split('T')[0];
+    }
+
+    hasRecentQuote(phoneNumber) {
+        return quotesDatabase.some(q => 
+            q.customer_phone === phoneNumber && 
+            q.status === 'sent' &&
+            new Date(q.created_at).getTime() > Date.now() - (24 * 60 * 60 * 1000) // Within 24 hours
+        );
+    }
+
+    getRecentQuote(phoneNumber) {
+        return quotesDatabase
+            .filter(q => q.customer_phone === phoneNumber && q.status === 'sent')
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+    }
+
+    /**
+     * Generates tech sheet from service/appointment
+     */
+    async generateTechSheetFromService(serviceData) {
         try {
             if (!this.openAI) {
                 console.log('⚠️ OpenAI not available, creating basic tech sheet');
-                return this.createBasicTechSheet(quote);
+                return this.createBasicTechSheet(serviceData);
             }
 
-            console.log('🔧 Generating tech sheet for accepted quote...');
+            console.log('🔧 Generating tech sheet for service...');
 
-            const prompt = `${quote.description} for ${quote.vehicle_info}`;
+            const prompt = `${serviceData.description} for ${serviceData.vehicle_info}`;
             
             const response = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
@@ -302,16 +706,16 @@ Make the instructions detailed and professional for a working mechanic.`
                 parsedResponse = JSON.parse(cleanResponse);
             } catch (parseError) {
                 console.warn('Failed to parse AI response, using basic tech sheet');
-                return this.createBasicTechSheet(quote);
+                return this.createBasicTechSheet(serviceData);
             }
 
             const techSheet = {
                 id: Date.now().toString(),
-                title: parsedResponse.title || `${quote.description} - ${quote.vehicle_info}`,
-                description: quote.description,
-                vehicle_info: quote.vehicle_info,
-                customer_name: quote.customer_name,
-                estimated_time: parsedResponse.estimated_time || quote.labor_hours,
+                title: parsedResponse.title || `${serviceData.description} - ${serviceData.vehicle_info}`,
+                description: serviceData.description,
+                vehicle_info: serviceData.vehicle_info,
+                customer_name: serviceData.customer_name,
+                estimated_time: parsedResponse.estimated_time || serviceData.labor_hours || 2,
                 difficulty: parsedResponse.difficulty || 'Medium',
                 tools_required: Array.isArray(parsedResponse.tools_required) ? parsedResponse.tools_required : ['Basic hand tools'],
                 parts_needed: Array.isArray(parsedResponse.parts_needed) ? parsedResponse.parts_needed : ['As specified'],
@@ -320,12 +724,12 @@ Make the instructions detailed and professional for a working mechanic.`
                 tips: Array.isArray(parsedResponse.tips) ? parsedResponse.tips : ['Refer to service manual'],
                 created_at: new Date().toISOString(),
                 generated_by: 'ai',
-                source: 'quote_acceptance',
-                quote_id: quote.id
+                source: 'service_request',
+                service_id: serviceData.id
             };
 
             techSheetsDatabase.push(techSheet);
-            console.log('🔧 Tech sheet generated from quote:', {
+            console.log('🔧 ✅ TECH SHEET GENERATED:', {
                 id: techSheet.id,
                 title: techSheet.title,
                 difficulty: techSheet.difficulty,
@@ -335,24 +739,31 @@ Make the instructions detailed and professional for a working mechanic.`
             return techSheet;
         } catch (error) {
             console.error('❌ Error generating tech sheet:', error);
-            return this.createBasicTechSheet(quote);
+            return this.createBasicTechSheet(serviceData);
         }
+    }
+
+    /**
+     * Generates tech sheet when quote is accepted
+     */
+    async generateTechSheetFromQuote(quote) {
+        return this.generateTechSheetFromService(quote);
     }
 
     /**
      * Creates a basic tech sheet when AI generation fails
      */
-    createBasicTechSheet(quote) {
+    createBasicTechSheet(serviceData) {
         const techSheet = {
             id: Date.now().toString(),
-            title: `${quote.description} - ${quote.vehicle_info}`,
-            description: quote.description,
-            vehicle_info: quote.vehicle_info,
-            customer_name: quote.customer_name,
-            estimated_time: quote.labor_hours,
+            title: `${serviceData.description} - ${serviceData.vehicle_info}`,
+            description: serviceData.description,
+            vehicle_info: serviceData.vehicle_info,
+            customer_name: serviceData.customer_name,
+            estimated_time: serviceData.labor_hours || 2,
             difficulty: 'Medium',
             tools_required: ['Basic hand tools', 'Socket set', 'Wrench set'],
-            parts_needed: ['As specified in quote'],
+            parts_needed: ['As specified in service request'],
             safety_warnings: ['Wear safety glasses', 'Use proper lifting techniques'],
             step_by_step: [
                 'Assess the vehicle and confirm the issue',
@@ -364,192 +775,13 @@ Make the instructions detailed and professional for a working mechanic.`
             tips: ['Take photos before disassembly', 'Keep parts organized'],
             created_at: new Date().toISOString(),
             generated_by: 'template',
-            source: 'quote_acceptance',
-            quote_id: quote.id
+            source: 'service_request',
+            service_id: serviceData.id
         };
 
         techSheetsDatabase.push(techSheet);
-        console.log('🔧 Basic tech sheet created:', techSheet.title);
+        console.log('🔧 ✅ BASIC TECH SHEET CREATED:', techSheet.title);
         return techSheet;
-    }
-
-    /**
-     * CRITICAL: Execute actions based on AI response
-     */
-    async executeAIActions(phoneNumber, aiResponse, customer) {
-        try {
-            console.log('🎯 Executing AI actions:', aiResponse.action);
-
-            // 1. CREATE QUOTE when AI provides pricing
-            if (aiResponse.reply.includes('$') && 
-                (aiResponse.intent.includes('Quote') || aiResponse.action.includes('quote'))) {
-                const quote = this.createQuoteFromAI(phoneNumber, aiResponse, customer);
-                if (quote) {
-                    console.log('💰 QUOTE CREATED:', `Quote #${quote.id} for $${quote.total_cost}`);
-                }
-            }
-
-            // 2. BOOK APPOINTMENT when customer confirms scheduling
-            if ((aiResponse.intent.includes('Booking') || aiResponse.intent.includes('Appointment')) &&
-                (aiResponse.action.includes('schedule') || aiResponse.action.includes('appointment'))) {
-                
-                // Extract date from recent conversation
-                const dateInfo = this.extractDateTimeFromConversation(phoneNumber);
-                const appointment = this.bookAppointmentFromAI(phoneNumber, aiResponse, customer, dateInfo.date, dateInfo.time);
-                
-                if (appointment) {
-                    console.log('📅 APPOINTMENT BOOKED:', `${appointment.date} at ${appointment.time}`);
-                    
-                    // Auto-generate tech sheet for the appointment
-                    if (customer?.vehicles.length > 0) {
-                        const mockQuote = {
-                            id: appointment.id,
-                            description: appointment.service_type,
-                            vehicle_info: appointment.vehicle_info,
-                            customer_name: appointment.customer_name,
-                            labor_hours: appointment.duration
-                        };
-                        
-                        const techSheet = await this.generateTechSheetFromQuote(mockQuote);
-                        if (techSheet) {
-                            console.log('🔧 TECH SHEET GENERATED for appointment:', techSheet.title);
-                        }
-                    }
-                }
-            }
-
-            // 3. ACCEPT QUOTE when customer says yes to a quote
-            if (aiResponse.intent.includes('Confirmation') && 
-                this.hasRecentQuote(phoneNumber)) {
-                
-                const recentQuote = this.getRecentQuote(phoneNumber);
-                if (recentQuote) {
-                    // Update quote status to accepted
-                    recentQuote.status = 'accepted';
-                    console.log('✅ QUOTE ACCEPTED:', `Quote #${recentQuote.id}`);
-                    
-                    // Generate tech sheet for accepted quote
-                    const techSheet = await this.generateTechSheetFromQuote(recentQuote);
-                    if (techSheet) {
-                        console.log('🔧 TECH SHEET GENERATED for accepted quote:', techSheet.title);
-                    }
-                    
-                    // Book appointment for the accepted quote
-                    const dateInfo = this.extractDateTimeFromConversation(phoneNumber);
-                    const appointment = this.bookAppointmentFromAI(phoneNumber, aiResponse, customer, dateInfo.date, dateInfo.time);
-                    if (appointment) {
-                        appointment.quote_id = recentQuote.id;
-                        console.log('📅 APPOINTMENT BOOKED for accepted quote');
-                    }
-                }
-            }
-
-        } catch (error) {
-            console.error('❌ Error executing AI actions:', error);
-        }
-    }
-
-    /**
-     * Helper methods for action execution
-     */
-    extractServiceDescription(aiResponse) {
-        // Extract service type from AI response or action
-        if (aiResponse.reply.toLowerCase().includes('tie rod')) return 'Tie rod end replacement';
-        if (aiResponse.reply.toLowerCase().includes('oil change')) return 'Oil change service';
-        if (aiResponse.reply.toLowerCase().includes('brake')) return 'Brake service';
-        if (aiResponse.reply.toLowerCase().includes('diagnostic')) return 'Vehicle diagnostic';
-        return 'General automotive service';
-    }
-
-    extractDateTimeInfo(text) {
-        const lowerText = text.toLowerCase();
-        const result = { date: null, time: null };
-        
-        // Extract day of week
-        if (lowerText.includes('monday')) result.date = this.getNextWeekday(1);
-        if (lowerText.includes('tuesday')) result.date = this.getNextWeekday(2);
-        if (lowerText.includes('wednesday')) result.date = this.getNextWeekday(3);
-        if (lowerText.includes('thursday')) result.date = this.getNextWeekday(4);
-        if (lowerText.includes('friday')) result.date = this.getNextWeekday(5);
-        
-        // Extract time
-        const timeMatch = text.match(/(\d{1,2}):?(\d{2})?\s*(am|pm)/i);
-        if (timeMatch) {
-            let hour = parseInt(timeMatch[1]);
-            const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
-            const ampm = timeMatch[3].toLowerCase();
-            
-            if (ampm === 'pm' && hour !== 12) hour += 12;
-            if (ampm === 'am' && hour === 12) hour = 0;
-            
-            result.time = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-        }
-        
-        return result;
-    }
-
-    extractDateTimeFromConversation(phoneNumber) {
-        // Look through recent messages for date/time information
-        const recentMessages = messageStore
-            .filter(m => m.phone_number === phoneNumber)
-            .slice(0, 10);
-        
-        let date = null;
-        let time = null;
-        
-        for (const msg of recentMessages) {
-            const dateTime = this.extractDateTimeInfo(msg.body);
-            if (dateTime.date && !date) date = dateTime.date;
-            if (dateTime.time && !time) time = dateTime.time;
-        }
-        
-        return { 
-            date: date || this.getNextBusinessDay(), 
-            time: time || '09:00' 
-        };
-    }
-
-    getNextWeekday(targetDay) {
-        const today = new Date();
-        const currentDay = today.getDay();
-        let daysUntilTarget = targetDay - currentDay;
-        
-        if (daysUntilTarget <= 0) {
-            daysUntilTarget += 7; // Next week
-        }
-        
-        const targetDate = new Date(today);
-        targetDate.setDate(today.getDate() + daysUntilTarget);
-        return targetDate.toISOString().split('T')[0];
-    }
-
-    getNextBusinessDay() {
-        const today = new Date();
-        const tomorrow = new Date(today);
-        tomorrow.setDate(today.getDate() + 1);
-        
-        // If tomorrow is weekend, move to Monday
-        if (tomorrow.getDay() === 0) { // Sunday
-            tomorrow.setDate(tomorrow.getDate() + 1);
-        } else if (tomorrow.getDay() === 6) { // Saturday
-            tomorrow.setDate(tomorrow.getDate() + 2);
-        }
-        
-        return tomorrow.toISOString().split('T')[0];
-    }
-
-    hasRecentQuote(phoneNumber) {
-        return quotesDatabase.some(q => 
-            q.customer_phone === phoneNumber && 
-            q.status === 'sent' &&
-            new Date(q.created_at).getTime() > Date.now() - (24 * 60 * 60 * 1000) // Within 24 hours
-        );
-    }
-
-    getRecentQuote(phoneNumber) {
-        return quotesDatabase
-            .filter(q => q.customer_phone === phoneNumber && q.status === 'sent')
-            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
     }
 
     /**
@@ -640,7 +872,7 @@ Make the instructions detailed and professional for a working mechanic.`
                     }
 
                     // 🎯 CRITICAL: Execute actions based on AI response
-                    await this.executeAIActions(phoneNumber, aiResponse, customer);
+                    await this.executeAIActions(phoneNumber, aiResponse, customer, conversationHistory);
                 }
                 catch (aiError) {
                     console.error('❌ AI processing failed, using emergency fallback:', aiError);
