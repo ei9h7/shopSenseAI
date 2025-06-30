@@ -69,6 +69,7 @@ export class OpenPhoneService {
     /**
      * Gets messages using the correct OpenPhone API format with required parameters
      * Fixed: Properly handle participants as an array parameter, not JSON string
+     * Fixed: Correct field mapping for message content
      */
     async getMessages(phoneNumber = null, limit = 50) {
         try {
@@ -141,16 +142,20 @@ export class OpenPhoneService {
                 messages = response.data.data;
                 console.log(`📨 Retrieved ${messages.length} messages from OpenPhone API`);
                 
-                // Log sample message structure for debugging
+                // Log sample message structure for debugging - FIXED: Use correct field names
                 if (messages.length > 0) {
+                    const sampleMsg = messages[0];
                     console.log(`📄 Sample message structure:`, {
-                        id: messages[0].id,
-                        from: messages[0].from,
-                        to: messages[0].to,
-                        direction: messages[0].direction,
-                        body: messages[0].body?.substring(0, 30) + '...',
-                        createdAt: messages[0].createdAt,
-                        availableFields: Object.keys(messages[0])
+                        id: sampleMsg.id,
+                        from: sampleMsg.from,
+                        to: sampleMsg.to,
+                        direction: sampleMsg.direction,
+                        // CRITICAL FIX: OpenPhone uses 'text' field, not 'body'
+                        text: sampleMsg.text?.substring(0, 30) + '...',
+                        body: sampleMsg.body?.substring(0, 30) + '...',
+                        content: sampleMsg.content?.substring(0, 30) + '...',
+                        createdAt: sampleMsg.createdAt,
+                        availableFields: Object.keys(sampleMsg)
                     });
                 }
             } else {
@@ -171,7 +176,15 @@ export class OpenPhoneService {
             if (phoneNumber && messages.length > 0) {
                 const filteredMessages = messages.filter(msg => {
                     // Normalize phone numbers for comparison (remove +, spaces, etc.)
-                    const normalizePhone = (phone) => phone?.replace(/[\s\-\(\)\+]/g, '') || '';
+                    const normalizePhone = (phone) => {
+                        if (!phone) return '';
+                        // Handle both string and array formats for 'to' field
+                        if (Array.isArray(phone)) {
+                            phone = phone[0] || '';
+                        }
+                        return phone.replace(/[\s\-\(\)\+]/g, '');
+                    };
+                    
                     const targetPhone = normalizePhone(phoneNumber);
                     const msgFrom = normalizePhone(msg.from);
                     const msgTo = normalizePhone(msg.to);
@@ -186,7 +199,7 @@ export class OpenPhoneService {
             return messages;
             
         } catch (error) {
-            console.error('❌ OpenPhone Get Messages Error:', error.response?.status);
+            console.error('❌ OpenPhone Get Messages Error:', error.response?.status || error.message);
             
             // Enhanced error logging for debugging
             if (error.response) {
@@ -241,6 +254,7 @@ export class OpenPhoneService {
     /**
      * Gets conversation history for a specific phone number
      * Uses the corrected API format with proper array parameter handling
+     * FIXED: Correct field mapping for message content
      */
     async getConversationHistory(phoneNumber, limit = 20) {
         try {
@@ -258,22 +272,48 @@ export class OpenPhoneService {
             const conversationMessages = allMessages
                 .filter(msg => {
                     // Normalize phone numbers for comparison
-                    const normalizePhone = (phone) => phone?.replace(/[\s\-\(\)\+]/g, '') || '';
+                    const normalizePhone = (phone) => {
+                        if (!phone) return '';
+                        // Handle both string and array formats for 'to' field
+                        if (Array.isArray(phone)) {
+                            phone = phone[0] || '';
+                        }
+                        return phone.replace(/[\s\-\(\)\+]/g, '');
+                    };
+                    
                     const targetPhone = normalizePhone(phoneNumber);
                     const msgFrom = normalizePhone(msg.from);
                     const msgTo = normalizePhone(msg.to);
                     
                     return msgFrom === targetPhone || msgTo === targetPhone;
                 })
-                .map(msg => ({
-                    id: msg.id || Date.now().toString(),
-                    phone_number: phoneNumber,
-                    body: msg.body || msg.content || msg.text || '',
-                    direction: (msg.from === phoneNumber) ? 'inbound' : 'outbound',
-                    timestamp: msg.createdAt || msg.created_at || new Date().toISOString(),
-                    processed: true,
-                    created_at: msg.createdAt || msg.created_at || new Date().toISOString()
-                }))
+                .map(msg => {
+                    // CRITICAL FIX: OpenPhone API uses different field names
+                    // Try multiple possible field names for message content
+                    const messageContent = msg.text || msg.body || msg.content || '';
+                    
+                    // Determine direction based on phone numbers
+                    const normalizePhone = (phone) => {
+                        if (!phone) return '';
+                        if (Array.isArray(phone)) {
+                            phone = phone[0] || '';
+                        }
+                        return phone.replace(/[\s\-\(\)\+]/g, '');
+                    };
+                    
+                    const isInbound = normalizePhone(msg.from) === normalizePhone(phoneNumber);
+                    
+                    return {
+                        id: msg.id || Date.now().toString(),
+                        phone_number: phoneNumber,
+                        body: messageContent,
+                        direction: isInbound ? 'inbound' : 'outbound',
+                        timestamp: msg.createdAt || msg.created_at || new Date().toISOString(),
+                        processed: true,
+                        created_at: msg.createdAt || msg.created_at || new Date().toISOString()
+                    };
+                })
+                .filter(msg => msg.body && msg.body.trim().length > 0) // Filter out empty messages
                 .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
                 .slice(-limit); // Get the most recent messages
             
@@ -283,7 +323,8 @@ export class OpenPhoneService {
             if (conversationMessages.length > 0) {
                 console.log('💬 Conversation preview:');
                 conversationMessages.slice(-3).forEach((msg, index) => {
-                    console.log(`   ${msg.direction.toUpperCase()}: "${msg.body.substring(0, 50)}..."`);
+                    const preview = msg.body.substring(0, 50);
+                    console.log(`   ${msg.direction.toUpperCase()}: "${preview}${preview.length >= 50 ? '...' : ''}"`);
                 });
             }
             
