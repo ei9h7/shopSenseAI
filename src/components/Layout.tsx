@@ -11,7 +11,8 @@ import {
   X,
   Wrench,
   ClipboardList,
-  ExternalLink
+  ExternalLink,
+  Users
 } from 'lucide-react'
 
 interface LayoutProps {
@@ -32,6 +33,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navigation = [
     { name: 'Dashboard', href: '/', icon: Home },
     { name: 'Messages', href: '/messages', icon: MessageSquare },
+    { name: 'Customers', href: '/customers', icon: Users },
     { name: 'Quotes', href: '/quotes', icon: FileText },
     { name: 'Calendar', href: '/calendar', icon: Calendar },
     { name: 'Tech Sheets', href: '/tech-sheets', icon: ClipboardList },

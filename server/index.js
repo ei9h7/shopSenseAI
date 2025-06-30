@@ -40,6 +40,7 @@ app.get('/', (req, res) => {
             health: '/health',
             webhook: '/api/webhooks/openphone',
             messages: '/api/messages',
+            customers: '/api/customers',
             settings: '/api/settings',
             techSheet: '/api/generate-tech-sheet'
         }
@@ -65,6 +66,25 @@ app.get('/api/settings', (req, res) => {
     catch (error) {
         console.error('Error fetching settings:', error);
         res.status(500).json({ error: 'Failed to fetch settings' });
+    }
+});
+
+// Customer Database API endpoint
+app.get('/api/customers', async (req, res) => {
+    try {
+        // Ensure messageProcessor is initialized
+        await messageProcessor.initialize();
+        
+        const customers = messageProcessor.getCustomers();
+        console.log(`📊 Returning ${customers.length} customers`);
+        res.json({ customers });
+    }
+    catch (error) {
+        console.error('Error fetching customers:', error);
+        res.status(500).json({ 
+            error: 'Failed to fetch customers',
+            customers: []
+        });
     }
 });
 
@@ -241,6 +261,7 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
     console.log(`📡 OpenPhone webhook URL: https://torquegpt.onrender.com/api/webhooks/openphone`);
     console.log(`🏥 Health check: https://torquegpt.onrender.com/health`);
     console.log(`📨 Messages API: https://torquegpt.onrender.com/api/messages`);
+    console.log(`👥 Customers API: https://torquegpt.onrender.com/api/customers`);
     console.log(`⚙️  Settings API: https://torquegpt.onrender.com/api/settings`);
     console.log(`🔧 Tech Sheet API: https://torquegpt.onrender.com/api/generate-tech-sheet`);
     console.log(`✅ TorqueSheetGPT webhook server deployed successfully!`);

@@ -4,6 +4,9 @@ import { OpenPhoneService } from './openphone.js';
 // Simple in-memory storage for messages (in production, use a database)
 let messageStore = []
 
+// Customer database storage (in production, use a proper database)
+let customerDatabase = []
+
 export class MessageProcessor {
     openAI = null;
     openPhone = null;
@@ -41,11 +44,107 @@ export class MessageProcessor {
                 console.warn('⚠️  OpenPhone API key or phone number not found');
             }
 
+            // Load existing customer database
+            this.loadCustomerDatabase();
+
             console.log('🤖 MessageProcessor initialized successfully');
         }
         catch (error) {
             console.error('❌ Failed to initialize MessageProcessor:', error);
         }
+    }
+
+    /**
+     * Loads customer database from storage (in production, this would be a real database)
+     */
+    loadCustomerDatabase() {
+        try {
+            // In production, this would load from a database
+            // For now, we'll use a simple in-memory store
+            console.log('📊 Customer database loaded');
+        } catch (error) {
+            console.error('❌ Error loading customer database:', error);
+        }
+    }
+
+    /**
+     * Updates or creates customer record
+     */
+    updateCustomerRecord(phoneNumber, customerData, messageBody) {
+        try {
+            // Find existing customer or create new one
+            let customer = customerDatabase.find(c => c.phone_number === phoneNumber);
+            
+            if (!customer) {
+                customer = {
+                    id: Date.now().toString(),
+                    phone_number: phoneNumber,
+                    first_name: null,
+                    last_name: null,
+                    full_name: null,
+                    address: null,
+                    is_repeat_customer: null,
+                    vehicles: [],
+                    service_history: [],
+                    notes: [],
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                };
+                customerDatabase.push(customer);
+                console.log('👤 New customer record created');
+            }
+
+            // Update customer data if provided
+            if (customerData) {
+                if (customerData.firstName) customer.first_name = customerData.firstName;
+                if (customerData.lastName) customer.last_name = customerData.lastName;
+                if (customerData.fullName) customer.full_name = customerData.fullName;
+                if (customerData.address) customer.address = customerData.address;
+                if (customerData.isRepeatCustomer !== null) customer.is_repeat_customer = customerData.isRepeatCustomer;
+                
+                // Update vehicle information
+                if (customerData.vehicle && customerData.vehicle.details) {
+                    const existingVehicle = customer.vehicles.find(v => v.details === customerData.vehicle.details);
+                    if (!existingVehicle) {
+                        customer.vehicles.push({
+                            year: customerData.vehicle.year,
+                            make: customerData.vehicle.make,
+                            model: customerData.vehicle.model,
+                            details: customerData.vehicle.details,
+                            added_at: new Date().toISOString()
+                        });
+                        console.log('🚗 Vehicle added to customer record');
+                    }
+                }
+
+                customer.updated_at = new Date().toISOString();
+                console.log('👤 Customer record updated:', {
+                    name: customer.full_name || 'Unknown',
+                    phone: customer.phone_number,
+                    vehicles: customer.vehicles.length,
+                    isRepeat: customer.is_repeat_customer
+                });
+            }
+
+            // Add service inquiry to history
+            customer.service_history.push({
+                date: new Date().toISOString(),
+                inquiry: messageBody,
+                type: 'sms_inquiry'
+            });
+
+            return customer;
+        } catch (error) {
+            console.error('❌ Error updating customer record:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Gets customer record by phone number
+     */
+    getCustomerRecord(phoneNumber) {
+        return customerDatabase.find(c => c.phone_number === phoneNumber) || null;
     }
 
     /**
@@ -130,6 +229,11 @@ export class MessageProcessor {
                         this.settings.business_name
                     );
                     console.log('🎯 AI Response successful:', aiResponse);
+
+                    // Update customer database with any collected information
+                    if (aiResponse.customerData) {
+                        this.updateCustomerRecord(phoneNumber, aiResponse.customerData, messageBody);
+                    }
                 }
                 catch (aiError) {
                     console.error('❌ AI processing failed, using emergency fallback:', aiError);
@@ -145,6 +249,7 @@ export class MessageProcessor {
                         ai_response: aiResponse.reply,
                         intent: aiResponse.intent,
                         action: aiResponse.action,
+                        customer_data: aiResponse.customerData || {},
                         processed: true
                     };
                 }
@@ -174,6 +279,18 @@ export class MessageProcessor {
                         console.log(`📞 CALL ${phoneNumber} IMMEDIATELY`);
                         console.log(`💬 Message: "${messageBody}"`);
                         console.log('🚨🚨🚨 URGENT ACTION REQUIRED 🚨🚨🚨');
+                    }
+
+                    // Log customer data collection progress
+                    if (aiResponse.intent.includes('Data Collection')) {
+                        console.log('📋 CUSTOMER DATA COLLECTION IN PROGRESS');
+                        const customer = this.getCustomerRecord(phoneNumber);
+                        if (customer) {
+                            console.log(`👤 Customer: ${customer.full_name || 'Name pending'}`);
+                            console.log(`🏠 Address: ${customer.address || 'Not collected'}`);
+                            console.log(`🚗 Vehicles: ${customer.vehicles.length} on file`);
+                            console.log(`🔄 Repeat Customer: ${customer.is_repeat_customer !== null ? (customer.is_repeat_customer ? 'Yes' : 'No') : 'Unknown'}`);
+                        }
                     }
                 }
                 catch (smsError) {
@@ -219,6 +336,13 @@ export class MessageProcessor {
         );
     }
 
+    // Method to get customer database (for API endpoint)
+    getCustomers() {
+        return [...customerDatabase].sort((a, b) => 
+            new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+        );
+    }
+
     // Method to mark message as read
     markMessageAsRead(messageId) {
         const messageIndex = messageStore.findIndex(m => m.id === messageId);
@@ -252,7 +376,7 @@ export class MessageProcessor {
     }
 
     getEmergencyFallback(messageBody, conversationHistory = []) {
-        // Enhanced fallback logic with conversation context
+        // Enhanced fallback logic with conversation context and customer data collection
         const lowerMessage = messageBody.toLowerCase();
 
         // Check if this is a positive response to a previous message
@@ -275,26 +399,29 @@ export class MessageProcessor {
                     lastOutboundMessage.body.toLowerCase().includes('appointment') ||
                     lastOutboundMessage.body.toLowerCase().includes('bring')) {
                     return {
-                        reply: "Perfect! I'll get that appointment scheduled for you. I'll be in touch shortly with available times. Thanks for choosing Pink Chicken Speed Shop!",
-                        intent: "Booking Confirmation",
-                        action: "Schedule appointment and send confirmation"
+                        reply: "Perfect! I'll get that appointment scheduled for you. Can I get your name for our appointment book?",
+                        intent: "Booking Confirmation + Data Collection",
+                        action: "Schedule appointment and collect customer name",
+                        customerData: {}
                     };
                 }
 
                 if (lastOutboundMessage.body.toLowerCase().includes('quote') ||
                     lastOutboundMessage.body.toLowerCase().includes('estimate')) {
                     return {
-                        reply: "Great! I'll prepare that quote for you and get back to you with the details shortly. Thanks for your business!",
-                        intent: "Quote Confirmation",
-                        action: "Prepare and send detailed quote"
+                        reply: "Great! I'll prepare that quote for you. What's your name so I can personalize the quote?",
+                        intent: "Quote Confirmation + Data Collection",
+                        action: "Prepare quote and collect customer name",
+                        customerData: {}
                     };
                 }
 
                 // Generic positive response
                 return {
-                    reply: "Excellent! I'll take care of that for you right away. I'll be in touch with the next steps. Thanks for choosing us!",
-                    intent: "Confirmation",
-                    action: "Follow up with confirmed service"
+                    reply: "Excellent! I'll take care of that for you. Can I get your name to help you properly?",
+                    intent: "Confirmation + Data Collection",
+                    action: "Follow up with confirmed service and collect name",
+                    customerData: {}
                 };
             }
         }
@@ -310,7 +437,8 @@ export class MessageProcessor {
             return {
                 reply: "🚨 EMERGENCY RECEIVED! I got your urgent message and will respond immediately. If you're in immediate danger, please call 911. Otherwise, I'll contact you within 15 minutes. Stay safe!",
                 intent: "Emergency",
-                action: "URGENT - Contact customer immediately"
+                action: "URGENT - Contact customer immediately",
+                customerData: {}
             };
         }
 
@@ -321,9 +449,10 @@ export class MessageProcessor {
             lowerMessage.includes('tune up') ||
             lowerMessage.includes('inspection')) {
             return {
-                reply: "Hi! Thanks for reaching out about service. I'd be happy to help with your vehicle maintenance. My rate is $80/hr with a 1-hour minimum. I'll get back to you shortly with more details!",
-                intent: "Service Request",
-                action: "Follow up with service quote"
+                reply: "Hi! Thanks for reaching out about service. I'd be happy to help with your vehicle maintenance. My rate is $80/hr with a 1-hour minimum. Can I get your name to get started?",
+                intent: "Service Request + Data Collection",
+                action: "Follow up with service quote and collect customer name",
+                customerData: {}
             };
         }
 
@@ -334,9 +463,10 @@ export class MessageProcessor {
             lowerMessage.includes('estimate') ||
             lowerMessage.includes('how much')) {
             return {
-                reply: "Thanks for your quote request! I'd be happy to provide an estimate. My labor rate is $80/hr with a 1-hour minimum. I'll review your message and get back to you with a detailed quote soon.",
-                intent: "Quote Request",
-                action: "Prepare detailed quote"
+                reply: "Thanks for your quote request! I'd be happy to provide an estimate. My labor rate is $80/hr with a 1-hour minimum. What's your name so I can prepare a personalized quote?",
+                intent: "Quote Request + Data Collection",
+                action: "Prepare detailed quote and collect customer name",
+                customerData: {}
             };
         }
 
@@ -349,9 +479,10 @@ export class MessageProcessor {
             lowerMessage.includes('won\'t start') ||
             lowerMessage.includes('not working')) {
             return {
-                reply: "I received your message about the issue with your vehicle. I'll take a look at what you've described and get back to you with next steps. My diagnostic rate is $80/hr. Thanks for reaching out!",
-                intent: "Repair Request",
-                action: "Diagnose issue and provide solution"
+                reply: "I received your message about the issue with your vehicle. I'll take a look at what you've described and get back to you with next steps. My diagnostic rate is $80/hr. What's your name so I can help you properly?",
+                intent: "Repair Request + Data Collection",
+                action: "Diagnose issue and collect customer name",
+                customerData: {}
             };
         }
 
@@ -362,17 +493,19 @@ export class MessageProcessor {
             lowerMessage.includes('available') ||
             lowerMessage.includes('when can')) {
             return {
-                reply: "Thanks for wanting to schedule service! I'll check my availability and get back to you with some time options. My rate is $80/hr with a 1-hour minimum. Looking forward to helping you!",
-                intent: "Booking Request",
-                action: "Check schedule and offer appointment times"
+                reply: "Thanks for wanting to schedule service! I'll check my availability and get back to you with some time options. My rate is $80/hr with a 1-hour minimum. Can I get your name for the appointment?",
+                intent: "Booking Request + Data Collection",
+                action: "Check schedule and collect customer name",
+                customerData: {}
             };
         }
 
         // Default response for any other message
         return {
-            reply: "Hi! Thanks for your message. I'm Pink Chicken Speed Shop and I received your inquiry. I'll review it and get back to you personally within the hour. My rate is $80/hr. Thanks for choosing us!",
-            intent: "General Inquiry",
-            action: "Review message and provide personalized response"
+            reply: "Hi! Thanks for your message. I'm Pink Chicken Speed Shop and I received your inquiry. I'll review it and get back to you personally within the hour. My rate is $80/hr. What's your name so I can assist you properly?",
+            intent: "General Inquiry + Data Collection",
+            action: "Review message and collect customer name",
+            customerData: {}
         };
     }
 

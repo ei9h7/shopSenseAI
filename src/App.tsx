@@ -3,6 +3,7 @@ import { Routes, Route } from 'react-router-dom'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import Messages from './pages/Messages'
+import Customers from './pages/Customers'
 import Quotes from './pages/Quotes'
 import Calendar from './pages/Calendar'
 import Invoices from './pages/Invoices'
@@ -15,6 +16,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/messages" element={<Messages />} />
+        <Route path="/customers" element={<Customers />} />
         <Route path="/quotes" element={<Quotes />} />
         <Route path="/calendar" element={<Calendar />} />
         <Route path="/tech-sheets" element={<TechSheets />} />
