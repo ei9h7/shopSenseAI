@@ -14,11 +14,13 @@ app.use(cors({
     origin: process.env.NODE_ENV === 'production'
         ? [
             'https://shopsenseai.app',
-            'https://shopsenseai.netlify.app'
+            'https://shopsenseai.netlify.app',
+            'https://clinquant-starship-25fe89.netlify.app'
           ]
         : [
             'https://shopsenseai.app',
-            'https://shopsenseai.netlify.app'
+            'https://shopsenseai.netlify.app',
+            'https://clinquant-starship-25fe89.netlify.app'
           ],
     credentials: true
 }));
@@ -289,8 +291,25 @@ app.post('/api/messages/reply', async (req, res) => {
     }
 });
 
-// OpenPhone webhook endpoint
+// OpenPhone webhook endpoint - FIXED PATH
 app.post('/api/webhooks/openphone', handleOpenPhoneWebhook);
+
+// Test webhook endpoint for debugging
+app.post('/webhooks/openphone', (req, res) => {
+    console.log('🔔 Webhook received at /webhooks/openphone (redirecting to /api/webhooks/openphone)');
+    handleOpenPhoneWebhook(req, res);
+});
+
+// Test endpoint to verify webhook is working
+app.get('/api/webhooks/openphone', (req, res) => {
+    res.json({
+        message: 'OpenPhone webhook endpoint is active',
+        method: 'POST',
+        url: '/api/webhooks/openphone',
+        server: 'ShopSenseAI',
+        timestamp: new Date().toISOString()
+    });
+});
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -300,7 +319,18 @@ app.use((err, req, res, next) => {
 
 // 404 handler
 app.use('*', (req, res) => {
-    res.status(404).json({ error: 'Endpoint not found' });
+    console.log(`❌ 404 - Endpoint not found: ${req.method} ${req.originalUrl}`);
+    res.status(404).json({ 
+        error: 'Endpoint not found',
+        method: req.method,
+        path: req.originalUrl,
+        availableEndpoints: {
+            health: 'GET /health',
+            webhook: 'POST /api/webhooks/openphone',
+            messages: 'GET /api/messages',
+            settings: 'GET /api/settings'
+        }
+    });
 });
 
 // Graceful shutdown handling for Render

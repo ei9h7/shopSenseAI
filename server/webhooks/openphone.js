@@ -2,8 +2,23 @@ import { messageProcessor } from '../services/messageProcessor.js';
 
 export async function handleOpenPhoneWebhook(req, res) {
     try {
-        console.log('🔔 Webhook received:', JSON.stringify(req.body, null, 2));
+        console.log('🔔 OpenPhone webhook received');
+        console.log('📋 Request method:', req.method);
+        console.log('📋 Request URL:', req.url);
+        console.log('📋 Request headers:', JSON.stringify(req.headers, null, 2));
+        console.log('📋 Request body:', JSON.stringify(req.body, null, 2));
+
         const payload = req.body;
+
+        // Handle GET requests (for webhook verification)
+        if (req.method === 'GET') {
+            console.log('✅ GET request - webhook verification');
+            return res.status(200).json({ 
+                message: 'OpenPhone webhook endpoint is active',
+                timestamp: new Date().toISOString(),
+                server: 'ShopSenseAI'
+            });
+        }
 
         // Verify this is a message event
         if (payload.object !== 'event' || !payload.data || !payload.data.object) {
