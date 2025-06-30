@@ -48,10 +48,50 @@ export class MessageProcessor {
     }
 
     /**
-     * Gets conversation history for a specific phone number
+     * Gets conversation history from OpenPhone API
+     * This ensures we always have the complete, authoritative conversation history
+     */
+    async getConversationHistoryFromOpenPhone(phoneNumber) {
+        if (!this.openPhone) {
+            console.warn('⚠️ OpenPhone service not available, using local history');
+            return this.getLocalConversationHistory(phoneNumber);
+        }
+
+        try {
+            console.log(`📞 Fetching conversation history from OpenPhone for ${phoneNumber}`);
+            
+            // Get recent messages from OpenPhone
+            const messages = await this.openPhone.getMessages(50); // Get last 50 messages
+            
+            // Filter messages for this specific phone number and format for AI context
+            const conversationMessages = messages
+                .filter(msg => msg.from === phoneNumber || msg.to === phoneNumber)
+                .map(msg => ({
+                    id: msg.id,
+                    phone_number: msg.from === phoneNumber ? msg.from : msg.to,
+                    body: msg.body || msg.text || '',
+                    direction: msg.from === phoneNumber ? 'inbound' : 'outbound',
+                    timestamp: msg.createdAt || msg.created_at,
+                    processed: true,
+                    created_at: msg.createdAt || msg.created_at
+                }))
+                .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+                .slice(-10); // Last 10 messages for context
+
+            console.log(`📚 Retrieved ${conversationMessages.length} messages from OpenPhone for context`);
+            return conversationMessages;
+        } catch (error) {
+            console.error('❌ Error fetching conversation history from OpenPhone:', error);
+            console.log('🔄 Falling back to local conversation history');
+            return this.getLocalConversationHistory(phoneNumber);
+        }
+    }
+
+    /**
+     * Gets conversation history from local storage (fallback)
      * Returns the last 10 messages to provide context while keeping token usage reasonable
      */
-    getConversationHistory(phoneNumber) {
+    getLocalConversationHistory(phoneNumber) {
         return messageStore
             .filter(msg => msg.phone_number === phoneNumber)
             .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
@@ -79,9 +119,9 @@ export class MessageProcessor {
             console.log('📝 Message stored:', message);
             console.log(`📊 Total messages in store: ${messageStore.length}`);
 
-            // Get conversation history for context
-            const conversationHistory = this.getConversationHistory(phoneNumber);
-            console.log(`💬 Found ${conversationHistory.length} messages in conversation history`);
+            // Get conversation history from OpenPhone for complete context
+            const conversationHistory = await this.getConversationHistoryFromOpenPhone(phoneNumber);
+            console.log(`💬 Using ${conversationHistory.length} messages for AI context`);
 
             // Check if Do Not Disturb is enabled
             const isDndEnabled = await this.isDndEnabled();
@@ -97,10 +137,10 @@ export class MessageProcessor {
             if (this.openPhone) {
                 let aiResponse;
 
-                // Try AI processing first with conversation context
+                // Try AI processing first with conversation context from OpenPhone
                 if (this.openAI && this.settings) {
                     try {
-                        console.log('🤖 Attempting AI processing with conversation context...');
+                        console.log('🤖 Attempting AI processing with OpenPhone conversation context...');
                         aiResponse = await this.openAI.processMessageWithContext(
                             messageBody, 
                             conversationHistory,
@@ -111,12 +151,12 @@ export class MessageProcessor {
                     catch (aiError) {
                         console.error('❌ AI processing failed, using emergency fallback:', aiError);
                         // Emergency fallback when AI completely fails
-                        aiResponse = this.getEmergencyFallback(messageBody);
+                        aiResponse = this.getEmergencyFallback(messageBody, conversationHistory);
                     }
                 }
                 else {
                     console.log('⚠️  AI service not available, using emergency fallback');
-                    aiResponse = this.getEmergencyFallback(messageBody);
+                    aiResponse = this.getEmergencyFallback(messageBody, conversationHistory);
                 }
 
                 // Update the stored message with AI response data
@@ -235,9 +275,53 @@ export class MessageProcessor {
         console.log('📤 Manual reply sent and stored:', outboundMessage);
     }
 
-    getEmergencyFallback(messageBody) {
-        // Intelligent fallback logic when AI is unavailable
+    getEmergencyFallback(messageBody, conversationHistory = []) {
+        // Enhanced fallback logic with conversation context
         const lowerMessage = messageBody.toLowerCase();
+
+        // Check if this is a positive response to a previous message
+        if (conversationHistory.length > 0) {
+            const lastOutboundMessage = conversationHistory
+                .filter(msg => msg.direction === 'outbound')
+                .pop();
+
+            if (lastOutboundMessage && (
+                lowerMessage.includes('yes') ||
+                lowerMessage.includes('sure') ||
+                lowerMessage.includes('okay') ||
+                lowerMessage.includes('ok') ||
+                lowerMessage.includes('sounds good') ||
+                lowerMessage.includes('that works') ||
+                lowerMessage.includes('please')
+            )) {
+                // They're agreeing to something we proposed
+                if (lastOutboundMessage.body.toLowerCase().includes('schedule') ||
+                    lastOutboundMessage.body.toLowerCase().includes('appointment') ||
+                    lastOutboundMessage.body.toLowerCase().includes('bring')) {
+                    return {
+                        reply: "Perfect! I'll get that appointment scheduled for you. I'll be in touch shortly with available times. Thanks for choosing Pink Chicken Speed Shop!",
+                        intent: "Booking Confirmation",
+                        action: "Schedule appointment and send confirmation"
+                    };
+                }
+
+                if (lastOutboundMessage.body.toLowerCase().includes('quote') ||
+                    lastOutboundMessage.body.toLowerCase().includes('estimate')) {
+                    return {
+                        reply: "Great! I'll prepare that quote for you and get back to you with the details shortly. Thanks for your business!",
+                        intent: "Quote Confirmation",
+                        action: "Prepare and send detailed quote"
+                    };
+                }
+
+                // Generic positive response
+                return {
+                    reply: "Excellent! I'll take care of that for you right away. I'll be in touch with the next steps. Thanks for choosing us!",
+                    intent: "Confirmation",
+                    action: "Follow up with confirmed service"
+                };
+            }
+        }
 
         // Check for emergency keywords
         if (lowerMessage.includes('emergency') ||

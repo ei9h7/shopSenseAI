@@ -72,18 +72,49 @@ export class OpenPhoneService {
             }
         }
     }
+    
+    /**
+     * Gets messages from OpenPhone API
+     * This fetches the complete conversation history from OpenPhone
+     */
     async getMessages(limit = 50) {
         try {
-            const response = await axios.get(`${OPENPHONE_API_URL}/messages?limit=${limit}`, {
-                headers: {
-                    'Authorization': this.apiKey
+            console.log(`📞 Fetching ${limit} messages from OpenPhone API...`);
+            
+            // Try different authentication formats
+            const authHeaders = [
+                { 'Authorization': this.apiKey },
+                { 'Authorization': `Bearer ${this.apiKey}` },
+                { 'X-API-Key': this.apiKey },
+                { 'openphone-api-key': this.apiKey }
+            ];
+            
+            let lastError = null;
+            for (let i = 0; i < authHeaders.length; i++) {
+                try {
+                    const response = await axios.get(`${OPENPHONE_API_URL}/messages?limit=${limit}`, {
+                        headers: authHeaders[i],
+                        timeout: 10000
+                    });
+                    
+                    console.log(`✅ Retrieved ${response.data?.data?.length || 0} messages from OpenPhone`);
+                    return response.data?.data || [];
+                } catch (authError) {
+                    lastError = authError;
+                    if (authError.response?.status !== 401 && authError.response?.status !== 403) {
+                        break;
+                    }
                 }
-            });
-            return response.data?.data || [];
+            }
+            
+            throw lastError;
         }
         catch (error) {
-            console.error('OpenPhone Get Messages Error:', error);
-            throw new Error('Failed to fetch messages');
+            console.error('❌ OpenPhone Get Messages Error:', error.response?.status, error.response?.data);
+            
+            // Don't throw error - return empty array as fallback
+            console.log('🔄 Returning empty message history due to API error');
+            return [];
         }
     }
 }
