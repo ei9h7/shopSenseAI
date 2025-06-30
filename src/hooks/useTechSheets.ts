@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useBusinessSettings } from './useBusinessSettings'
+import { generateTechSheetPDF } from '../utils/pdfGenerator'
 import type { Quote } from './useQuotes'
 import toast from 'react-hot-toast'
 
@@ -32,7 +33,7 @@ export interface TechSheet {
  * - Auto-generation from accepted quotes/bookings
  * - Local storage persistence
  * - AI-powered content generation via OpenAI
- * - Professional formatting for workshop use
+ * - Professional PDF generation with ShopSenseAI branding
  * 
  * The hook integrates with the business settings to access OpenAI API keys
  * and provides comprehensive error handling for production use.
@@ -391,6 +392,19 @@ Make the instructions detailed and professional for a working mechanic.`
   }
 
   /**
+   * Downloads a tech sheet as a branded PDF
+   */
+  const downloadTechSheetPDF = async (sheet: TechSheet) => {
+    try {
+      await generateTechSheetPDF(sheet)
+      toast.success('PDF tech sheet downloaded!')
+    } catch (error) {
+      console.error('Error generating PDF:', error)
+      toast.error('Failed to generate PDF')
+    }
+  }
+
+  /**
    * Deletes a tech sheet
    */
   const deleteTechSheet = (sheetId: string) => {
@@ -441,6 +455,7 @@ Make the instructions detailed and professional for a working mechanic.`
     isGenerating,
     generateTechSheet,
     generateFromQuote,
+    downloadTechSheetPDF,
     deleteTechSheet,
     getTechSheetStats,
     getTechSheetsForQuote,

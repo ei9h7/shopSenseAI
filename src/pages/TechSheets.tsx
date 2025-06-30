@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { ClipboardList, Plus, Download, Eye, Wrench, Clock, AlertTriangle, X, Bot, FileText } from 'lucide-react'
+import { ClipboardList, Plus, Download, Eye, Wrench, Clock, AlertTriangle, X, Bot, FileText, FilePdf } from 'lucide-react'
 import { useTechSheets } from '../hooks/useTechSheets'
 import { useBusinessSettings } from '../hooks/useBusinessSettings'
 import toast from 'react-hot-toast'
@@ -13,7 +13,7 @@ import toast from 'react-hot-toast'
  * - Manual tech sheet generation via AI from job descriptions
  * - Auto-generated sheets from accepted quotes/bookings
  * - Fallback tech sheets when AI is unavailable
- * - Downloadable PDF format for workshop use
+ * - Professional branded PDF generation for workshop use
  * - Difficulty ratings and time estimates
  * - Safety warnings and tool requirements
  * - Step-by-step repair instructions
@@ -26,7 +26,8 @@ const TechSheets: React.FC = () => {
     generateTechSheet, 
     isGenerating, 
     canGenerateTechSheets, 
-    hasAIGeneration 
+    hasAIGeneration,
+    downloadTechSheetPDF
   } = useTechSheets()
   const { settings, serverSettings } = useBusinessSettings()
   const [showGenerateForm, setShowGenerateForm] = useState(false)
@@ -57,10 +58,9 @@ const TechSheets: React.FC = () => {
   }
 
   /**
-   * Downloads a tech sheet as a formatted text file
-   * In a production environment, this could generate a PDF
+   * Downloads a tech sheet as a legacy text file (for compatibility)
    */
-  const downloadTechSheet = (sheet: any) => {
+  const downloadTechSheetText = (sheet: any) => {
     const content = `
 TECH SHEET: ${sheet.title}
 Generated: ${new Date(sheet.created_at).toLocaleDateString()}
@@ -101,7 +101,7 @@ Built with Bolt.new
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
     
-    toast.success('Tech sheet downloaded!')
+    toast.success('Text tech sheet downloaded!')
   }
 
   const getDifficultyColor = (difficulty: string) => {
@@ -127,7 +127,7 @@ Built with Bolt.new
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Tech Sheets</h1>
           <p className="mt-1 text-sm text-gray-500">
-            AI-generated technical guides for repair jobs
+            AI-generated technical guides for repair jobs with professional PDF output
           </p>
         </div>
         <button
@@ -137,6 +137,26 @@ Built with Bolt.new
           <Plus className="h-4 w-4 mr-2" />
           Generate Tech Sheet
         </button>
+      </div>
+
+      {/* PDF Generation Notice */}
+      <div className="bg-gradient-to-r from-primary-50 to-pink-50 border border-primary-200 rounded-md p-4">
+        <div className="flex">
+          <div className="flex-shrink-0">
+            <FilePdf className="h-5 w-5 text-primary-600" />
+          </div>
+          <div className="ml-3">
+            <h3 className="text-sm font-medium text-primary-800">
+              Professional PDF Tech Sheets
+            </h3>
+            <div className="mt-2 text-sm text-primary-700">
+              <p>
+                Tech sheets are now generated as professional, branded PDFs with ShopSenseAI styling, 
+                safety warnings, step-by-step instructions, and workshop-ready formatting.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* AI Status Notice */}
@@ -228,6 +248,16 @@ Built with Bolt.new
                         ? 'AI will generate detailed, job-specific instructions'
                         : 'Professional template will be used (configure OpenAI for AI generation)'
                       }
+                    </p>
+                  </div>
+                </div>
+
+                {/* PDF Notice */}
+                <div className="p-3 rounded-md bg-primary-50 border border-primary-200">
+                  <div className="flex items-center">
+                    <FilePdf className="h-4 w-4 text-primary-600 mr-2" />
+                    <p className="text-sm text-primary-800">
+                      Tech sheet will be generated as a professional, branded PDF
                     </p>
                   </div>
                 </div>
@@ -327,11 +357,18 @@ Built with Bolt.new
                         View
                       </button>
                       <button
-                        onClick={() => downloadTechSheet(sheet)}
-                        className="inline-flex items-center px-3 py-1 border border-transparent rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                        onClick={() => downloadTechSheetPDF(sheet)}
+                        className="inline-flex items-center px-3 py-1 border border-transparent rounded-md text-sm font-medium text-white bg-primary-600 hover:bg-primary-700"
+                      >
+                        <FilePdf className="h-4 w-4 mr-1" />
+                        PDF
+                      </button>
+                      <button
+                        onClick={() => downloadTechSheetText(sheet)}
+                        className="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
                       >
                         <Download className="h-4 w-4 mr-1" />
-                        Download
+                        Text
                       </button>
                     </div>
                   </div>
@@ -476,11 +513,18 @@ Built with Bolt.new
               
               <div className="flex justify-end space-x-2 mt-6">
                 <button
-                  onClick={() => downloadTechSheet(selectedSheet)}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
+                  onClick={() => downloadTechSheetPDF(selectedSheet)}
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700"
+                >
+                  <FilePdf className="h-4 w-4 mr-2" />
+                  Download PDF
+                </button>
+                <button
+                  onClick={() => downloadTechSheetText(selectedSheet)}
+                  className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
                 >
                   <Download className="h-4 w-4 mr-2" />
-                  Download
+                  Download Text
                 </button>
                 <button
                   onClick={() => setSelectedSheet(null)}
