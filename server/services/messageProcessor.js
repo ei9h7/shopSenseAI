@@ -53,8 +53,8 @@ export class MessageProcessor {
      */
     async getConversationHistoryFromOpenPhone(phoneNumber) {
         if (!this.openPhone) {
-            console.warn('⚠️ OpenPhone service not available, using local history');
-            return this.getLocalConversationHistory(phoneNumber);
+            console.warn('⚠️ OpenPhone service not available');
+            return [];
         }
 
         try {
@@ -82,27 +82,16 @@ export class MessageProcessor {
             return conversationMessages;
         } catch (error) {
             console.error('❌ Error fetching conversation history from OpenPhone:', error);
-            console.log('🔄 Falling back to local conversation history');
-            return this.getLocalConversationHistory(phoneNumber);
+            console.log('🔄 OpenPhone API unavailable - no conversation context');
+            return [];
         }
-    }
-
-    /**
-     * Gets conversation history from local storage (fallback)
-     * Returns the last 10 messages to provide context while keeping token usage reasonable
-     */
-    getLocalConversationHistory(phoneNumber) {
-        return messageStore
-            .filter(msg => msg.phone_number === phoneNumber)
-            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-            .slice(-10) // Last 10 messages for context
     }
 
     async processIncomingMessage(phoneNumber, messageBody) {
         try {
             console.log(`📨 Processing message from ${phoneNumber}: ${messageBody}`);
 
-            // Create new message object
+            // Create new message object for local tracking
             const message = {
                 id: Date.now().toString(),
                 phone_number: phoneNumber,
@@ -114,14 +103,10 @@ export class MessageProcessor {
                 read: false
             };
 
-            // Store message in memory (and log it)
+            // Store message in memory for immediate webhook response
             messageStore.unshift(message);
-            console.log('📝 Message stored:', message);
-            console.log(`📊 Total messages in store: ${messageStore.length}`);
-
-            // Get conversation history from OpenPhone for complete context
-            const conversationHistory = await this.getConversationHistoryFromOpenPhone(phoneNumber);
-            console.log(`💬 Using ${conversationHistory.length} messages for AI context`);
+            console.log('📝 Message stored locally for webhook response');
+            console.log(`📊 Total messages in local store: ${messageStore.length}`);
 
             // Check if Do Not Disturb is enabled
             const isDndEnabled = await this.isDndEnabled();
@@ -133,29 +118,26 @@ export class MessageProcessor {
                 return;
             }
 
-            // Always try to send a response when DND is enabled
-            if (this.openPhone) {
+            // Only proceed with AI response if both services are available
+            if (this.openAI && this.openPhone) {
+                // Get conversation history from OpenPhone for complete context
+                const conversationHistory = await this.getConversationHistoryFromOpenPhone(phoneNumber);
+                console.log(`💬 Using ${conversationHistory.length} messages for AI context`);
+
                 let aiResponse;
 
-                // Try AI processing first with conversation context from OpenPhone
-                if (this.openAI && this.settings) {
-                    try {
-                        console.log('🤖 Attempting AI processing with OpenPhone conversation context...');
-                        aiResponse = await this.openAI.processMessageWithContext(
-                            messageBody, 
-                            conversationHistory,
-                            this.settings.business_name
-                        );
-                        console.log('🎯 AI Response successful:', aiResponse);
-                    }
-                    catch (aiError) {
-                        console.error('❌ AI processing failed, using emergency fallback:', aiError);
-                        // Emergency fallback when AI completely fails
-                        aiResponse = this.getEmergencyFallback(messageBody, conversationHistory);
-                    }
+                try {
+                    console.log('🤖 Attempting AI processing with OpenPhone conversation context...');
+                    aiResponse = await this.openAI.processMessageWithContext(
+                        messageBody, 
+                        conversationHistory,
+                        this.settings.business_name
+                    );
+                    console.log('🎯 AI Response successful:', aiResponse);
                 }
-                else {
-                    console.log('⚠️  AI service not available, using emergency fallback');
+                catch (aiError) {
+                    console.error('❌ AI processing failed, using emergency fallback:', aiError);
+                    // Emergency fallback when AI completely fails
                     aiResponse = this.getEmergencyFallback(messageBody, conversationHistory);
                 }
 
@@ -171,11 +153,11 @@ export class MessageProcessor {
                     };
                 }
 
-                // Always try to send a response
+                // Send response via SMS
                 try {
                     await this.sendResponse(phoneNumber, aiResponse, message.id);
 
-                    // Create outbound message record
+                    // Create outbound message record for local tracking
                     const outboundMessage = {
                         id: Date.now().toString() + '_out',
                         phone_number: phoneNumber,
@@ -188,7 +170,7 @@ export class MessageProcessor {
                     };
 
                     messageStore.unshift(outboundMessage);
-                    console.log('📤 Outbound message stored:', outboundMessage);
+                    console.log('📤 Outbound message stored locally');
 
                     // Log action needed for manual follow-up
                     if (aiResponse.action.includes('URGENT') || aiResponse.intent === 'Emergency') {
@@ -200,8 +182,6 @@ export class MessageProcessor {
                 }
                 catch (smsError) {
                     console.error('❌ Failed to send SMS response:', smsError);
-
-                    // Log the failure but don't throw - we want to continue processing
                     console.log('📝 MESSAGE PROCESSING SUMMARY:');
                     console.log(`📱 From: ${phoneNumber}`);
                     console.log(`💬 Message: "${messageBody}"`);
@@ -216,7 +196,7 @@ export class MessageProcessor {
                 }
             }
             else {
-                console.error('❌ OpenPhone service not available - cannot send response');
+                console.error('❌ AI or OpenPhone service not available - cannot send response');
                 console.log('📝 MESSAGE RECEIVED BUT NO RESPONSE CAPABILITY:');
                 console.log(`📱 From: ${phoneNumber}`);
                 console.log(`💬 Message: "${messageBody}"`);
