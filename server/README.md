@@ -1,8 +1,8 @@
-# TorqueSheetGPT Webhook Server
+# ShopSenseAI Webhook Server
 
 > **Built with [Bolt.new](https://bolt.new)** ⚡
 
-This is the standalone webhook server for TorqueSheetGPT that handles OpenPhone webhooks and processes messages with AI.
+This is the standalone webhook server for ShopSenseAI that handles OpenPhone webhooks and processes messages with AI.
 
 ## 🚀 Production Deployment
 
@@ -301,6 +301,6 @@ This project is open source and available under the [MIT License](LICENSE).
 
 ---
 
-**TorqueSheetGPT Webhook Server** - Reliable, intelligent, and always responsive! 🚗⚡
+**ShopSenseAI Webhook Server** - Reliable, intelligent, and always responsive! 🚗⚡
 
 Built with [Bolt.new](https://bolt.new) - The future of AI-powered development.

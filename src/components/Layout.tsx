@@ -53,7 +53,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center space-x-2">
             <Wrench className="h-8 w-8 text-primary-600" />
-            <span className="text-xl font-bold text-gray-900">TorqueSheetGPT</span>
+            <span className="text-xl font-bold text-gray-900">ShopSenseAI</span>
           </div>
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -99,7 +99,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               {/* Logo and brand */}
               <div className="flex items-center flex-shrink-0 px-4">
                 <Wrench className="h-8 w-8 text-primary-600" />
-                <span className="ml-2 text-xl font-bold text-gray-900">TorqueSheetGPT</span>
+                <span className="ml-2 text-xl font-bold text-gray-900">ShopSenseAI</span>
               </div>
               
               {/* Navigation menu */}

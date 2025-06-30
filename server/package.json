@@ -1,7 +1,8 @@
 {
-  "name": "torque-gpt-webhook-server",
+  "name": "shopsenseai-webhook-server",
   "version": "1.0.0",
   "type": "module",
+  "description": "ShopSenseAI webhook server - Instant quotes. Automated booking. More wrench time.",
   "scripts": {
     "start": "node index.js",
     "dev": "node index.js",

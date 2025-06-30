@@ -1,12 +1,14 @@
-# TorqueSheetGPT - AI Service Advisor
+# ShopSenseAI - AI Service Advisor
 
 > **Built with [Bolt.new](https://bolt.new)** ⚡
+
+**Instant quotes. Automated booking. More wrench time.**
 
 An AI-powered service advisor application for solo mechanics, featuring automated message processing, intelligent customer communication, and graceful AI fallbacks to prevent customer loss.
 
 ## 🚀 Live Demo
 
-- **Frontend**: https://clinquant-starship-25fe89.netlify.app
+- **Frontend**: https://shopsenseai.app
 - **Backend API**: https://torquegpt.onrender.com
 - **Webhook URL**: https://torquegpt.onrender.com/api/webhooks/openphone
 
@@ -121,7 +123,7 @@ Tech Sheet Generation ← Quote Acceptance ← AI Processing
 ```bash
 # Clone the repository
 git clone <your-repository-url>
-cd torquesheetgpt
+cd shopsenseai
 
 # Install frontend dependencies
 npm install
@@ -329,4 +331,6 @@ This project is open source and available under the [MIT License](LICENSE).
 
 ---
 
-**TorqueSheetGPT** - Never lose a customer to missed messages again! 🚗⚡
+**ShopSenseAI** - Never lose a customer to missed messages again! 🚗⚡
+
+*Instant quotes. Automated booking. More wrench time.*

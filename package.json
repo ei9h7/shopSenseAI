@@ -1,8 +1,9 @@
 {
-  "name": "torque-gpt",
+  "name": "shopsenseai",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
+  "description": "AI-powered service advisor for solo mechanics - Instant quotes. Automated booking. More wrench time.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

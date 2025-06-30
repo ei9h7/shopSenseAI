@@ -13,6 +13,7 @@ const PORT = process.env.PORT || 10000;
 app.use(cors({
     origin: process.env.NODE_ENV === 'production'
         ? [
+            'https://shopsenseai.app',
             'https://clinquant-starship-25fe89.netlify.app',
             // Add your custom StackBlitz domain here when you get it
             'https://your-custom-domain.stackblitz.app',
@@ -40,9 +41,10 @@ app.get('/health', (req, res) => {
 // Root endpoint
 app.get('/', (req, res) => {
     res.json({
-        name: 'TorqueSheetGPT Webhook Server',
+        name: 'ShopSenseAI Webhook Server',
         version: '1.0.0',
         status: 'running',
+        tagline: 'Instant quotes. Automated booking. More wrench time.',
         endpoints: {
             health: '/health',
             webhook: '/api/webhooks/openphone',
@@ -316,7 +318,7 @@ process.on('SIGINT', () => {
 
 // Start server - CRITICAL: Bind to 0.0.0.0 for Render
 const server = app.listen(PORT, '0.0.0.0', async () => {
-    console.log(`🚀 Webhook server running on port ${PORT}`);
+    console.log(`🚀 ShopSenseAI webhook server running on port ${PORT}`);
     console.log(`📡 OpenPhone webhook URL: https://torquegpt.onrender.com/api/webhooks/openphone`);
     console.log(`🏥 Health check: https://torquegpt.onrender.com/health`);
     console.log(`📨 Messages API: https://torquegpt.onrender.com/api/messages`);
@@ -326,7 +328,8 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
     console.log(`🔧 Tech Sheets API: https://torquegpt.onrender.com/api/tech-sheets`);
     console.log(`⚙️  Settings API: https://torquegpt.onrender.com/api/settings`);
     console.log(`🔧 Tech Sheet API: https://torquegpt.onrender.com/api/generate-tech-sheet`);
-    console.log(`✅ TorqueSheetGPT webhook server deployed successfully!`);
+    console.log(`✅ ShopSenseAI webhook server deployed successfully!`);
+    console.log(`🎯 Tagline: Instant quotes. Automated booking. More wrench time.`);
     
     // Initialize messageProcessor on startup
     try {
