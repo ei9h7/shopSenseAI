@@ -82,12 +82,14 @@ export class OpenPhoneService {
     }
     
     /**
-     * Gets messages from OpenPhone API
-     * This fetches the complete conversation history from OpenPhone
+     * Gets messages from OpenPhone API with proper conversation filtering
+     * This fetches messages and filters by conversation/phone number
      */
-    async getMessages(limit = 50) {
+    async getMessages(phoneNumber = null, limit = 50) {
         try {
-            console.log(`📞 Fetching ${limit} messages from OpenPhone API...`);
+            console.log(`📞 Fetching messages from OpenPhone API...`);
+            console.log(`   Phone filter: ${phoneNumber || 'All conversations'}`);
+            console.log(`   Limit: ${limit}`);
             
             // Try different authentication formats
             const authHeaders = [
@@ -100,15 +102,67 @@ export class OpenPhoneService {
             let lastError = null;
             for (let i = 0; i < authHeaders.length; i++) {
                 try {
-                    const response = await axios.get(`${OPENPHONE_API_URL}/messages?limit=${limit}`, {
-                        headers: authHeaders[i],
-                        timeout: 10000
+                    console.log(`🔄 Trying authentication method ${i + 1}/4 for message retrieval...`);
+                    
+                    // Build query parameters
+                    const params = new URLSearchParams();
+                    params.append('limit', limit.toString());
+                    
+                    // If we have a specific phone number, try to filter by it
+                    if (phoneNumber) {
+                        // Try different parameter names that OpenPhone might use
+                        params.append('phoneNumber', phoneNumber);
+                    }
+                    
+                    const url = `${OPENPHONE_API_URL}/messages?${params.toString()}`;
+                    console.log(`📡 Requesting: ${url}`);
+                    
+                    const response = await axios.get(url, {
+                        headers: {
+                            ...authHeaders[i],
+                            'Accept': 'application/json'
+                        },
+                        timeout: 15000
                     });
                     
-                    console.log(`✅ Retrieved ${response.data?.data?.length || 0} messages from OpenPhone`);
-                    return response.data?.data || [];
+                    console.log(`✅ OpenPhone Messages API Response: ${response.status}`);
+                    console.log(`📊 Raw response data structure:`, Object.keys(response.data || {}));
+                    
+                    let messages = [];
+                    
+                    // Handle different response formats
+                    if (response.data?.data) {
+                        messages = response.data.data;
+                    } else if (response.data?.messages) {
+                        messages = response.data.messages;
+                    } else if (Array.isArray(response.data)) {
+                        messages = response.data;
+                    } else {
+                        console.warn('⚠️ Unexpected response format from OpenPhone API');
+                        messages = [];
+                    }
+                    
+                    console.log(`📨 Retrieved ${messages.length} total messages from OpenPhone`);
+                    
+                    // If we have a specific phone number, filter messages client-side
+                    if (phoneNumber && messages.length > 0) {
+                        const filteredMessages = messages.filter(msg => {
+                            const msgFrom = msg.from || msg.fromNumber || '';
+                            const msgTo = msg.to || msg.toNumber || '';
+                            return msgFrom === phoneNumber || msgTo === phoneNumber;
+                        });
+                        
+                        console.log(`🎯 Filtered to ${filteredMessages.length} messages for ${phoneNumber}`);
+                        return filteredMessages;
+                    }
+                    
+                    return messages;
+                    
                 } catch (authError) {
                     lastError = authError;
+                    console.log(`❌ Authentication method ${i + 1} failed: ${authError.response?.status}`);
+                    console.log(`❌ Error details:`, authError.response?.data);
+                    
                     if (authError.response?.status !== 401 && authError.response?.status !== 403) {
                         break;
                     }
@@ -116,12 +170,57 @@ export class OpenPhoneService {
             }
             
             throw lastError;
-        }
-        catch (error) {
+            
+        } catch (error) {
             console.error('❌ OpenPhone Get Messages Error:', error.response?.status, error.response?.data);
+            console.error('❌ Full error details:', {
+                status: error.response?.status,
+                statusText: error.response?.statusText,
+                data: error.response?.data,
+                message: error.message
+            });
             
             // Don't throw error - return empty array as fallback
             console.log('🔄 Returning empty message history due to API error');
+            return [];
+        }
+    }
+    
+    /**
+     * Gets conversation history for a specific phone number
+     * This is a more targeted approach to get conversation context
+     */
+    async getConversationHistory(phoneNumber, limit = 20) {
+        try {
+            console.log(`💬 Getting conversation history for ${phoneNumber}`);
+            
+            // Get all recent messages and filter for this conversation
+            const allMessages = await this.getMessages(null, 100); // Get more messages to ensure we capture the conversation
+            
+            // Filter and format messages for this specific conversation
+            const conversationMessages = allMessages
+                .filter(msg => {
+                    const msgFrom = msg.from || msg.fromNumber || '';
+                    const msgTo = msg.to || msg.toNumber || '';
+                    return msgFrom === phoneNumber || msgTo === phoneNumber;
+                })
+                .map(msg => ({
+                    id: msg.id,
+                    phone_number: phoneNumber,
+                    body: msg.body || msg.content || msg.text || '',
+                    direction: (msg.from === phoneNumber || msg.fromNumber === phoneNumber) ? 'inbound' : 'outbound',
+                    timestamp: msg.createdAt || msg.created_at || new Date().toISOString(),
+                    processed: true,
+                    created_at: msg.createdAt || msg.created_at || new Date().toISOString()
+                }))
+                .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+                .slice(-limit); // Get the most recent messages
+            
+            console.log(`📚 Formatted ${conversationMessages.length} conversation messages`);
+            return conversationMessages;
+            
+        } catch (error) {
+            console.error('❌ Error getting conversation history:', error);
             return [];
         }
     }

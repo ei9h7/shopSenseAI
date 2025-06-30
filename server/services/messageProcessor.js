@@ -48,7 +48,7 @@ export class MessageProcessor {
     }
 
     /**
-     * Gets conversation history from OpenPhone API
+     * Gets conversation history from OpenPhone API with improved error handling
      * This ensures we always have the complete, authoritative conversation history
      */
     async getConversationHistoryFromOpenPhone(phoneNumber) {
@@ -60,26 +60,21 @@ export class MessageProcessor {
         try {
             console.log(`📞 Fetching conversation history from OpenPhone for ${phoneNumber}`);
             
-            // Get recent messages from OpenPhone
-            const messages = await this.openPhone.getMessages(50); // Get last 50 messages
+            // Use the improved conversation history method
+            const conversationMessages = await this.openPhone.getConversationHistory(phoneNumber, 10);
             
-            // Filter messages for this specific phone number and format for AI context
-            const conversationMessages = messages
-                .filter(msg => msg.from === phoneNumber || msg.to === phoneNumber)
-                .map(msg => ({
-                    id: msg.id,
-                    phone_number: msg.from === phoneNumber ? msg.from : msg.to,
-                    body: msg.body || msg.text || '',
-                    direction: msg.from === phoneNumber ? 'inbound' : 'outbound',
-                    timestamp: msg.createdAt || msg.created_at,
-                    processed: true,
-                    created_at: msg.createdAt || msg.created_at
-                }))
-                .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-                .slice(-10); // Last 10 messages for context
-
             console.log(`📚 Retrieved ${conversationMessages.length} messages from OpenPhone for context`);
+            
+            // Log the conversation context for debugging
+            if (conversationMessages.length > 0) {
+                console.log('💬 Conversation context:');
+                conversationMessages.forEach((msg, index) => {
+                    console.log(`   ${index + 1}. ${msg.direction.toUpperCase()}: "${msg.body.substring(0, 50)}..."`);
+                });
+            }
+            
             return conversationMessages;
+            
         } catch (error) {
             console.error('❌ Error fetching conversation history from OpenPhone:', error);
             console.log('🔄 OpenPhone API unavailable - no conversation context');
