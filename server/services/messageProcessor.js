@@ -47,6 +47,17 @@ export class MessageProcessor {
         }
     }
 
+    /**
+     * Gets conversation history for a specific phone number
+     * Returns the last 10 messages to provide context while keeping token usage reasonable
+     */
+    getConversationHistory(phoneNumber) {
+        return messageStore
+            .filter(msg => msg.phone_number === phoneNumber)
+            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+            .slice(-10) // Last 10 messages for context
+    }
+
     async processIncomingMessage(phoneNumber, messageBody) {
         try {
             console.log(`📨 Processing message from ${phoneNumber}: ${messageBody}`);
@@ -68,6 +79,10 @@ export class MessageProcessor {
             console.log('📝 Message stored:', message);
             console.log(`📊 Total messages in store: ${messageStore.length}`);
 
+            // Get conversation history for context
+            const conversationHistory = this.getConversationHistory(phoneNumber);
+            console.log(`💬 Found ${conversationHistory.length} messages in conversation history`);
+
             // Check if Do Not Disturb is enabled
             const isDndEnabled = await this.isDndEnabled();
             console.log(`🔕 DND Status: ${isDndEnabled ? 'Enabled' : 'Disabled'}`);
@@ -82,11 +97,15 @@ export class MessageProcessor {
             if (this.openPhone) {
                 let aiResponse;
 
-                // Try AI processing first
+                // Try AI processing first with conversation context
                 if (this.openAI && this.settings) {
                     try {
-                        console.log('🤖 Attempting AI processing...');
-                        aiResponse = await this.openAI.processMessage(messageBody, this.settings.business_name);
+                        console.log('🤖 Attempting AI processing with conversation context...');
+                        aiResponse = await this.openAI.processMessageWithContext(
+                            messageBody, 
+                            conversationHistory,
+                            this.settings.business_name
+                        );
                         console.log('🎯 AI Response successful:', aiResponse);
                     }
                     catch (aiError) {

@@ -9,21 +9,60 @@ export class OpenAIService {
         this.apiKey = apiKey;
     }
 
-    async processMessage(messageBody, businessName = 'Pink Chicken Speed Shop') {
+    /**
+     * Processes a message with full conversation context
+     * This provides the AI with the conversation history to maintain context
+     */
+    async processMessageWithContext(messageBody, conversationHistory, businessName = 'Pink Chicken Speed Shop') {
         try {
+            // Build conversation context for AI
             const messages = [
                 {
                     role: 'system',
-                    content: `You are a professional, friendly assistant for ${businessName}. Use the rules provided to give quotes, book jobs, or respond to client requests.`
-                },
-                {
-                    role: 'user',
-                    content: `Here is the client message:\n\n"${messageBody}"\n\nYour job is to identify what the client wants, estimate time using basic mechanical repair knowledge, apply $80/hr rate (1 hour minimum, $20 per 15 min extra), and reply with a friendly, useful message.\n\nFormat like this:\n---\nReply: [The message to text back]\nIntent: [e.g. Quote Request, Booking, Emergency]\nAction: [e.g. Send booking link, Ask for more info, Mark for review]\n---`
+                    content: `You are a professional, friendly assistant for ${businessName}, an automotive repair shop. 
+
+IMPORTANT CONTEXT RULES:
+- You have access to the full conversation history with this customer
+- Use the conversation context to provide relevant, contextual responses
+- If the customer is responding to a previous question or quote, acknowledge that context
+- If they say "yes" or "sure" or similar, refer to what they're agreeing to based on the conversation
+- Maintain conversation flow and don't repeat information already discussed
+- Your labor rate is $80/hr with a 1-hour minimum ($20 per 15 min extra)
+
+RESPONSE FORMAT:
+Reply: [The contextual message to text back]
+Intent: [e.g. Quote Request, Booking Confirmation, Emergency, Follow-up]
+Action: [e.g. Send booking link, Prepare quote, Schedule appointment]`
                 }
             ];
 
+            // Add conversation history for context (if available)
+            if (conversationHistory && conversationHistory.length > 0) {
+                messages.push({
+                    role: 'user',
+                    content: `CONVERSATION HISTORY (most recent last):
+${conversationHistory.map(msg => 
+    `${msg.direction === 'inbound' ? 'CUSTOMER' : 'YOU'}: "${msg.body}"`
+).join('\n')}
+
+CURRENT MESSAGE FROM CUSTOMER: "${messageBody}"
+
+Based on this conversation history, provide a contextual response that acknowledges what has been discussed and responds appropriately to their current message.`
+                });
+            } else {
+                // No conversation history - treat as new conversation
+                messages.push({
+                    role: 'user',
+                    content: `This is a new conversation. Customer message: "${messageBody}"
+
+Provide a professional response as an automotive repair shop assistant.`
+                });
+            }
+
+            console.log(`🧠 Sending ${conversationHistory.length} messages of context to AI`);
+
             const response = await axios.post(OPENAI_API_URL, {
-                model: 'gpt-4o', // Changed from gpt-4o-mini to gpt-4o
+                model: 'gpt-4o',
                 temperature: 0.6,
                 max_tokens: 500,
                 messages
@@ -63,6 +102,13 @@ export class OpenAIService {
         }
     }
 
+    /**
+     * Legacy method for backward compatibility
+     */
+    async processMessage(messageBody, businessName = 'Pink Chicken Speed Shop') {
+        return this.processMessageWithContext(messageBody, [], businessName);
+    }
+
     getIntelligentFallback(messageBody) {
         // Intelligent fallback logic when AI is unavailable
         const lowerMessage = messageBody.toLowerCase();
@@ -79,6 +125,20 @@ export class OpenAIService {
                 reply: "🚨 EMERGENCY RECEIVED! I got your urgent message and will respond immediately. If you're in immediate danger, please call 911. Otherwise, I'll contact you within 15 minutes. Stay safe!",
                 intent: "Emergency",
                 action: "URGENT - Contact customer immediately"
+            };
+        }
+        
+        // Positive responses (yes, sure, okay, etc.)
+        if (lowerMessage.includes('yes') || 
+            lowerMessage.includes('sure') || 
+            lowerMessage.includes('okay') ||
+            lowerMessage.includes('ok') ||
+            lowerMessage.includes('sounds good') ||
+            lowerMessage.includes('that works')) {
+            return {
+                reply: "Great! I'll get that set up for you. I'll be in touch shortly with the next steps. Thanks for choosing Pink Chicken Speed Shop!",
+                intent: "Confirmation",
+                action: "Follow up with confirmed service"
             };
         }
         
