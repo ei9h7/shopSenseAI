@@ -49,7 +49,7 @@ export class MessageProcessor {
 
     async processIncomingMessage(phoneNumber, messageBody) {
         try {
-            console.log(`📨 Processing message from ${phoneNumber}: ${messageBody}`);
+            console.log(`📨 Processing message from ${phoneNumber}: "${messageBody}"`);
 
             // Create new message object
             const message = {
@@ -64,15 +64,14 @@ export class MessageProcessor {
 
             // Store message
             this.messages.unshift(message);
-            console.log('📝 Message stored:', message);
+            console.log('📝 Message stored');
 
             // Check if Do Not Disturb is enabled
             const isDndEnabled = await this.isDndEnabled();
             console.log(`🔕 DND Status: ${isDndEnabled ? 'Enabled' : 'Disabled'}`);
 
             if (!isDndEnabled) {
-                // Just store the message, don't auto-respond
-                console.log('✅ Message received (no auto-response)');
+                console.log('✅ Message received (no auto-response due to DND)');
                 return;
             }
 
@@ -92,11 +91,11 @@ export class MessageProcessor {
                 );
                 
                 console.log('🎯 AI Response received:');
-                console.log('   Reply:', aiResponse.reply);
+                console.log('   Reply:', aiResponse.reply.substring(0, 100) + '...');
                 console.log('   Intent:', aiResponse.intent);
                 console.log('   Action:', aiResponse.action);
 
-                // Check for booking confirmation in the action OR reply
+                // Check for booking confirmation - IMPROVED DETECTION
                 const isBookingConfirmed = this.checkForBookingConfirmation(aiResponse, messageBody, conversationHistory);
                 
                 if (isBookingConfirmed) {
@@ -104,6 +103,15 @@ export class MessageProcessor {
                     const appointment = this.createAppointmentFromConversation(phoneNumber, conversationHistory, messageBody, aiResponse);
                     if (appointment) {
                         console.log('✅ Appointment successfully created:', appointment);
+                        
+                        // Generate tech sheet for the appointment
+                        if (appointment.service_type && appointment.service_type !== 'Service TBD') {
+                            console.log('🔧 Generating tech sheet for appointment...');
+                            const techSheet = this.generateTechSheetFromAppointment(appointment);
+                            if (techSheet) {
+                                console.log('✅ Tech sheet generated:', techSheet.title);
+                            }
+                        }
                     } else {
                         console.log('❌ Failed to create appointment');
                     }
@@ -112,12 +120,10 @@ export class MessageProcessor {
                 // Check if it's an emergency
                 if (this.isEmergency(aiResponse.intent)) {
                     console.log('🚨 Emergency detected!');
-                    await this.sendResponse(phoneNumber, aiResponse, message.id);
                 }
-                else {
-                    // Send AI response
-                    await this.sendResponse(phoneNumber, aiResponse, message.id);
-                }
+
+                // Send AI response
+                await this.sendResponse(phoneNumber, aiResponse, message.id);
             }
             else {
                 console.warn('⚠️  AI services not available - message stored only');
@@ -130,7 +136,7 @@ export class MessageProcessor {
     }
 
     /**
-     * Enhanced booking detection that looks for multiple indicators
+     * IMPROVED booking detection that looks for multiple indicators
      */
     checkForBookingConfirmation(aiResponse, currentMessage, conversationHistory) {
         const indicators = [
@@ -147,34 +153,38 @@ export class MessageProcessor {
                 aiResponse.reply.toLowerCase().includes('see you monday') ||
                 aiResponse.reply.toLowerCase().includes('see you tuesday') ||
                 aiResponse.reply.toLowerCase().includes('see you wednesday') ||
-                aiResponse.reply.toLowerCase().includes('see you friday')
+                aiResponse.reply.toLowerCase().includes('see you friday') ||
+                aiResponse.reply.toLowerCase().includes('i can schedule you') ||
+                aiResponse.reply.toLowerCase().includes('i\'ll get that scheduled')
             ),
             
             // Intent indicates booking
             aiResponse.intent && (
-                aiResponse.intent.toLowerCase().includes('booking') ||
+                aiResponse.intent.toLowerCase().includes('booking confirmation') ||
                 aiResponse.intent.toLowerCase().includes('appointment') ||
                 aiResponse.intent.toLowerCase().includes('scheduled')
             ),
             
-            // Current message confirms appointment
+            // Current message confirms appointment with specific time
             currentMessage && (
-                currentMessage.toLowerCase().includes('thursday at 10') ||
-                currentMessage.toLowerCase().includes('book') ||
-                currentMessage.toLowerCase().includes('schedule') ||
-                currentMessage.toLowerCase().includes('appointment')
+                (currentMessage.toLowerCase().includes('thursday') && currentMessage.toLowerCase().includes('10')) ||
+                (currentMessage.toLowerCase().includes('monday') && currentMessage.toLowerCase().includes('am')) ||
+                (currentMessage.toLowerCase().includes('tuesday') && currentMessage.toLowerCase().includes('am')) ||
+                (currentMessage.toLowerCase().includes('wednesday') && currentMessage.toLowerCase().includes('am')) ||
+                (currentMessage.toLowerCase().includes('friday') && currentMessage.toLowerCase().includes('am')) ||
+                (currentMessage.toLowerCase().includes('book') && currentMessage.toLowerCase().includes('am')) ||
+                (currentMessage.toLowerCase().includes('schedule') && currentMessage.toLowerCase().includes('am'))
             )
         ];
         
         const detectedIndicators = indicators.filter(Boolean);
         console.log(`🔍 Booking detection check: ${detectedIndicators.length} indicators found`);
-        console.log('   Indicators:', indicators.map((ind, i) => `${i}: ${ind}`));
         
-        return detectedIndicators.length > 0;
+        return detectedIndicators.length >= 1; // At least 1 indicator needed
     }
 
     /**
-     * Creates appointment from conversation context
+     * IMPROVED appointment creation from conversation context
      */
     createAppointmentFromConversation(phoneNumber, conversationHistory, currentMessage, aiResponse) {
         try {
@@ -184,8 +194,8 @@ export class MessageProcessor {
             const customerInfo = this.extractCustomerInfoFromConversation(conversationHistory, phoneNumber);
             console.log('👤 Customer info extracted:', customerInfo);
             
-            // Extract appointment details
-            const appointmentDetails = this.extractAppointmentDetails(conversationHistory, currentMessage, aiResponse);
+            // Extract appointment details from AI action or conversation
+            const appointmentDetails = this.extractAppointmentDetailsImproved(conversationHistory, currentMessage, aiResponse);
             console.log('📋 Appointment details extracted:', appointmentDetails);
             
             // Create appointment object
@@ -194,18 +204,18 @@ export class MessageProcessor {
                 customer_name: customerInfo.name || 'Customer',
                 customer_phone: phoneNumber,
                 vehicle_info: customerInfo.vehicle || 'Vehicle TBD',
-                service_type: customerInfo.service || 'Service TBD',
+                service_type: customerInfo.service || 'General Service',
                 date: appointmentDetails.date,
                 time: appointmentDetails.time,
                 duration: 1, // Default 1 hour
                 status: 'scheduled',
-                notes: `Auto-booked from SMS: "${currentMessage}"`,
+                notes: `Auto-booked from SMS conversation`,
                 created_at: new Date().toISOString()
             };
             
             // Store appointment
             this.appointments.push(appointment);
-            console.log('✅ Appointment stored in memory:', appointment);
+            console.log('✅ Appointment stored in memory');
             
             // Update customer record
             this.updateCustomerRecord(phoneNumber, customerInfo.name, customerInfo.vehicle, customerInfo.service);
@@ -218,7 +228,142 @@ export class MessageProcessor {
     }
 
     /**
-     * Extracts customer info from conversation history
+     * IMPROVED appointment details extraction
+     */
+    extractAppointmentDetailsImproved(conversationHistory, currentMessage, aiResponse) {
+        // First check if AI action has BOOKING_CONFIRMED format
+        if (aiResponse.action && aiResponse.action.includes('BOOKING_CONFIRMED:')) {
+            const parts = aiResponse.action.split('|').map(p => p.trim());
+            if (parts.length >= 6) {
+                const dateStr = parts[4].trim();
+                const timeStr = parts[5].trim();
+                
+                console.log(`📋 Extracted from AI action - Date: ${dateStr}, Time: ${timeStr}`);
+                
+                return {
+                    date: this.parseBookingDate(dateStr),
+                    time: this.parseBookingTime(timeStr)
+                };
+            }
+        }
+        
+        // Fallback to analyzing all conversation text
+        const allText = [
+            ...conversationHistory.slice(-10).map(msg => msg.body),
+            currentMessage,
+            aiResponse.reply
+        ].join(' ').toLowerCase();
+        
+        console.log('🔍 Analyzing text for appointment details...');
+        
+        let date = this.parseBookingDate(allText);
+        let time = this.parseBookingTime(allText);
+        
+        console.log(`📅 Final parsed - Date: ${date}, Time: ${time}`);
+        
+        return { date, time };
+    }
+
+    /**
+     * Generates a tech sheet from an appointment
+     */
+    generateTechSheetFromAppointment(appointment) {
+        try {
+            const techSheet = {
+                id: Date.now().toString() + '_tech',
+                title: `${appointment.service_type} - ${appointment.vehicle_info}`,
+                description: `${appointment.service_type} for ${appointment.vehicle_info}`,
+                vehicle_info: appointment.vehicle_info,
+                customer_name: appointment.customer_name,
+                estimated_time: 1.5,
+                difficulty: 'Medium',
+                tools_required: this.getToolsForService(appointment.service_type),
+                parts_needed: this.getPartsForService(appointment.service_type),
+                safety_warnings: this.getSafetyWarningsForService(appointment.service_type),
+                step_by_step: this.getStepsForService(appointment.service_type),
+                tips: this.getTipsForService(appointment.service_type),
+                created_at: new Date().toISOString(),
+                generated_by: 'manual',
+                source: 'booking',
+                quote_id: appointment.id
+            };
+            
+            this.techSheets.push(techSheet);
+            console.log('✅ Tech sheet generated and stored');
+            return techSheet;
+        } catch (error) {
+            console.error('❌ Error generating tech sheet:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Helper methods for tech sheet generation
+     */
+    getToolsForService(service) {
+        const serviceType = service.toLowerCase();
+        if (serviceType.includes('oil')) return ['Oil drain pan', 'Socket wrench', 'Oil filter wrench', 'Funnel'];
+        if (serviceType.includes('brake')) return ['Brake tools', 'C-clamp', 'Socket set', 'Torque wrench'];
+        if (serviceType.includes('tire')) return ['Tire iron', 'Jack', 'Jack stands', 'Torque wrench'];
+        return ['Basic hand tools', 'Socket set', 'Wrench set'];
+    }
+
+    getPartsForService(service) {
+        const serviceType = service.toLowerCase();
+        if (serviceType.includes('oil')) return ['Engine oil', 'Oil filter', 'Drain plug gasket'];
+        if (serviceType.includes('brake')) return ['Brake pads', 'Brake fluid', 'Hardware kit'];
+        if (serviceType.includes('tire')) return ['Tires', 'Valve stems', 'Wheel weights'];
+        return ['As specified in service request'];
+    }
+
+    getSafetyWarningsForService(service) {
+        const serviceType = service.toLowerCase();
+        if (serviceType.includes('oil')) return ['Engine may be hot', 'Dispose of oil properly', 'Wear gloves'];
+        if (serviceType.includes('brake')) return ['Never work under vehicle without proper support', 'Brake fluid is corrosive', 'Test brakes before driving'];
+        if (serviceType.includes('tire')) return ['Never work under vehicle supported only by jack', 'Check tire pressure when cold', 'Inspect for damage'];
+        return ['Wear safety glasses', 'Use proper lifting techniques', 'Ensure vehicle is secure'];
+    }
+
+    getStepsForService(service) {
+        const serviceType = service.toLowerCase();
+        if (serviceType.includes('oil')) return [
+            'Warm engine to operating temperature',
+            'Lift vehicle and locate drain plug',
+            'Drain old oil completely',
+            'Replace oil filter',
+            'Install new drain plug with gasket',
+            'Lower vehicle and add new oil',
+            'Check oil level and for leaks'
+        ];
+        if (serviceType.includes('brake')) return [
+            'Lift vehicle and remove wheels',
+            'Inspect brake system components',
+            'Remove old brake pads',
+            'Clean and lubricate caliper slides',
+            'Install new brake pads',
+            'Bleed brake system if needed',
+            'Test brake pedal feel and function'
+        ];
+        return [
+            'Assess the vehicle and confirm the issue',
+            'Gather all required tools and parts',
+            'Follow manufacturer specifications',
+            'Perform the repair work carefully',
+            'Test functionality after completion',
+            'Clean up work area and dispose of waste properly'
+        ];
+    }
+
+    getTipsForService(service) {
+        const serviceType = service.toLowerCase();
+        if (serviceType.includes('oil')) return ['Use correct oil viscosity', 'Reset oil life monitor', 'Keep maintenance records'];
+        if (serviceType.includes('brake')) return ['Always replace pads in pairs', 'Check rotor condition', 'Pump brakes before driving'];
+        if (serviceType.includes('tire')) return ['Rotate tires regularly', 'Check alignment if wear is uneven', 'Keep spare tire inflated'];
+        return ['Take photos before disassembly', 'Keep parts organized', 'Refer to service manual'];
+    }
+
+    /**
+     * IMPROVED customer info extraction
      */
     extractCustomerInfoFromConversation(conversationHistory, phoneNumber) {
         let name = null;
@@ -237,7 +382,7 @@ export class MessageProcessor {
                 }
             }
             
-            // Look for vehicle patterns
+            // Look for vehicle patterns - IMPROVED
             if (!vehicle) {
                 const vehicleMatch = text.match(/(\d{4})\s+(ford|chevy|chevrolet|dodge|toyota|honda|nissan|bmw|mercedes|audi|volkswagen|vw|subaru|mazda|hyundai|kia|jeep|ram|gmc|cadillac|buick|lincoln|acura|infiniti|lexus|volvo)\s+(\w+)/i);
                 if (vehicleMatch) {
@@ -250,9 +395,9 @@ export class MessageProcessor {
                 }
             }
             
-            // Look for service patterns
+            // Look for service patterns - IMPROVED
             if (!service) {
-                const services = ['oil change', 'brake', 'tire', 'transmission', 'engine', 'battery', 'tune up', 'inspection'];
+                const services = ['oil change', 'brake service', 'brake repair', 'tire service', 'transmission', 'engine repair', 'battery replacement', 'tune up', 'inspection', 'diagnostic'];
                 for (const svc of services) {
                     if (text.includes(svc)) {
                         service = svc;
@@ -266,47 +411,14 @@ export class MessageProcessor {
     }
 
     /**
-     * Extracts appointment date and time from conversation
-     */
-    extractAppointmentDetails(conversationHistory, currentMessage, aiResponse) {
-        const allText = [
-            ...conversationHistory.map(msg => msg.body),
-            currentMessage,
-            aiResponse.reply,
-            aiResponse.action
-        ].join(' ').toLowerCase();
-        
-        console.log('🔍 Analyzing text for appointment details:', allText.substring(0, 200) + '...');
-        
-        // Extract date
-        let date = this.parseBookingDate(allText);
-        let time = this.parseBookingTime(allText);
-        
-        console.log(`📅 Parsed date: ${date}, time: ${time}`);
-        
-        return { date, time };
-    }
-
-    /**
-     * Gets conversation history for a specific phone number
-     * Now returns more messages for better context
-     */
-    getConversationHistory(phoneNumber, limit = 30) {
-        return this.messages
-            .filter(msg => msg.phone_number === phoneNumber)
-            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-            .slice(-limit); // Get the last N messages
-    }
-
-    /**
-     * Parses booking date from natural language
+     * IMPROVED date parsing
      */
     parseBookingDate(text) {
         const today = new Date();
         const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
         const lowerText = text.toLowerCase();
         
-        console.log('📅 Parsing date from text:', lowerText.substring(0, 100));
+        console.log('📅 Parsing date from text...');
         
         // Find the day of the week
         for (let i = 0; i < dayNames.length; i++) {
@@ -326,7 +438,7 @@ export class MessageProcessor {
                 appointmentDate.setDate(today.getDate() + daysUntil);
                 const dateStr = appointmentDate.toISOString().split('T')[0];
                 
-                console.log(`📅 Calculated appointment date: ${dateStr} (${daysUntil} days from now)`);
+                console.log(`📅 Calculated appointment date: ${dateStr}`);
                 return dateStr;
             }
         }
@@ -341,12 +453,34 @@ export class MessageProcessor {
     }
 
     /**
-     * Parses booking time from natural language
+     * IMPROVED time parsing
      */
     parseBookingTime(text) {
         const lowerText = text.toLowerCase();
         
-        console.log('🕐 Parsing time from text:', lowerText.substring(0, 100));
+        console.log('🕐 Parsing time from text...');
+        
+        // Look for specific time mentions first
+        if (lowerText.includes('10am') || lowerText.includes('10 am')) {
+            console.log('🕐 Found 10am mention');
+            return '10:00';
+        }
+        if (lowerText.includes('10pm') || lowerText.includes('10 pm')) {
+            console.log('🕐 Found 10pm mention');
+            return '22:00';
+        }
+        if (lowerText.includes('9am') || lowerText.includes('9 am')) {
+            return '09:00';
+        }
+        if (lowerText.includes('11am') || lowerText.includes('11 am')) {
+            return '11:00';
+        }
+        if (lowerText.includes('2pm') || lowerText.includes('2 pm')) {
+            return '14:00';
+        }
+        if (lowerText.includes('3pm') || lowerText.includes('3 pm')) {
+            return '15:00';
+        }
         
         // Extract time patterns
         const timeMatch = lowerText.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
@@ -362,9 +496,6 @@ export class MessageProcessor {
                 hour += 12;
             } else if (ampm === 'am' && hour === 12) {
                 hour = 0;
-            } else if (!ampm && hour < 8) {
-                // Assume PM for hours less than 8 (like 10 = 10am)
-                // Actually, let's assume AM for business hours
             }
             
             // Format as HH:MM
@@ -373,19 +504,19 @@ export class MessageProcessor {
             return timeStr;
         }
         
-        // Look for specific time mentions
-        if (lowerText.includes('10am') || lowerText.includes('10 am')) {
-            console.log('🕐 Found 10am mention');
-            return '10:00';
-        }
-        if (lowerText.includes('10pm') || lowerText.includes('10 pm')) {
-            console.log('🕐 Found 10pm mention');
-            return '22:00';
-        }
-        
         // Default to 10:00 AM if we can't parse
         console.log('🕐 Using default time: 10:00');
         return '10:00';
+    }
+
+    /**
+     * Gets conversation history for a specific phone number
+     */
+    getConversationHistory(phoneNumber, limit = 30) {
+        return this.messages
+            .filter(msg => msg.phone_number === phoneNumber)
+            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+            .slice(-limit);
     }
 
     /**
@@ -396,7 +527,6 @@ export class MessageProcessor {
             let customer = this.customers.find(c => c.phone_number === phoneNumber);
             
             if (!customer) {
-                // Create new customer
                 customer = {
                     id: Date.now().toString(),
                     phone_number: phoneNumber,
@@ -411,12 +541,10 @@ export class MessageProcessor {
                 console.log('👤 New customer created:', customer.full_name);
             }
             
-            // Update customer name if we have it
             if (customerName && customerName !== 'Customer') {
                 customer.full_name = customerName;
             }
             
-            // Add vehicle if new
             if (vehicle && vehicle !== 'Vehicle TBD' && !customer.vehicles.some(v => v.details === vehicle)) {
                 customer.vehicles.push({
                     details: vehicle,
@@ -425,7 +553,6 @@ export class MessageProcessor {
                 console.log('🚗 Vehicle added to customer:', vehicle);
             }
             
-            // Add service history
             if (service && service !== 'Service TBD') {
                 customer.service_history.push({
                     date: new Date().toISOString(),
@@ -448,7 +575,7 @@ export class MessageProcessor {
         }
 
         try {
-            console.log(`📤 Sending response to ${phoneNumber}: ${aiResponse.reply}`);
+            console.log(`📤 Sending response to ${phoneNumber}`);
 
             // Send SMS response
             await this.openPhone.sendSMS(phoneNumber, aiResponse.reply);
@@ -496,7 +623,6 @@ export class MessageProcessor {
 
     async isDndEnabled() {
         try {
-            // Server environment - use environment variable
             return process.env.DND_ENABLED === 'true';
         }
         catch {
@@ -506,7 +632,7 @@ export class MessageProcessor {
 
     // API methods for frontend
     getMessages() {
-        return this.messages.slice(0, 100); // Return last 100 messages
+        return this.messages.slice(0, 100);
     }
 
     getCustomers() {
@@ -518,11 +644,12 @@ export class MessageProcessor {
     }
 
     getAppointments() {
-        console.log(`📊 Returning ${this.appointments.length} appointments:`, this.appointments);
+        console.log(`📊 Returning ${this.appointments.length} appointments`);
         return this.appointments;
     }
 
     getTechSheets() {
+        console.log(`📊 Returning ${this.techSheets.length} tech sheets`);
         return this.techSheets;
     }
 
@@ -539,10 +666,8 @@ export class MessageProcessor {
         }
 
         try {
-            // Send SMS
             await this.openPhone.sendSMS(phoneNumber, message);
 
-            // Create outbound message record
             const outboundMessage = {
                 id: Date.now().toString() + '_manual',
                 phone_number: phoneNumber,
