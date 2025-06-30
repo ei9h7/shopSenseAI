@@ -13,6 +13,8 @@ export class MessageProcessor {
 
     async initialize() {
         try {
+            console.log('🔄 Initializing MessageProcessor...');
+            
             // Server environment - use environment variables
             this.settings = {
                 business_name: process.env.BUSINESS_NAME || 'Pink Chicken Speed Shop',
@@ -23,33 +25,53 @@ export class MessageProcessor {
                 dnd_enabled: process.env.DND_ENABLED === 'true'
             };
 
+            console.log('⚙️ Settings loaded:', {
+                business_name: this.settings.business_name,
+                labor_rate: this.settings.labor_rate,
+                has_openai_key: !!this.settings.openai_api_key,
+                has_openphone_key: !!this.settings.openphone_api_key,
+                has_phone_number: !!this.settings.phone_number,
+                dnd_enabled: this.settings.dnd_enabled
+            });
+
             // Initialize services if API keys are available
             if (this.settings.openai_api_key) {
-                this.openAI = new OpenAIService(this.settings.openai_api_key);
-                console.log('✅ OpenAI service initialized');
-            }
-            else {
-                console.warn('⚠️  OpenAI API key not found');
+                try {
+                    this.openAI = new OpenAIService(this.settings.openai_api_key);
+                    console.log('✅ OpenAI service initialized');
+                } catch (error) {
+                    console.error('❌ Failed to initialize OpenAI service:', error);
+                }
+            } else {
+                console.warn('⚠️ OpenAI API key not found');
             }
 
             if (this.settings.openphone_api_key && this.settings.phone_number) {
-                this.openPhone = new OpenPhoneService(this.settings.openphone_api_key, this.settings.phone_number);
-                console.log('✅ OpenPhone service initialized');
-            }
-            else {
-                console.warn('⚠️  OpenPhone API key or phone number not found');
+                try {
+                    this.openPhone = new OpenPhoneService(this.settings.openphone_api_key, this.settings.phone_number);
+                    console.log('✅ OpenPhone service initialized');
+                } catch (error) {
+                    console.error('❌ Failed to initialize OpenPhone service:', error);
+                }
+            } else {
+                console.warn('⚠️ OpenPhone API key or phone number not found');
             }
 
-            console.log('🤖 MessageProcessor initialized successfully');
-        }
-        catch (error) {
+            console.log('✅ MessageProcessor initialized successfully');
+        } catch (error) {
             console.error('❌ Failed to initialize MessageProcessor:', error);
+            throw error;
         }
     }
 
     async processIncomingMessage(phoneNumber, messageBody) {
         try {
             console.log(`📨 Processing message from ${phoneNumber}: "${messageBody}"`);
+
+            // Validate inputs
+            if (!phoneNumber || !messageBody) {
+                throw new Error('Missing phone number or message body');
+            }
 
             // Create new message object
             const message = {
@@ -75,700 +97,35 @@ export class MessageProcessor {
                 return;
             }
 
-            // Get conversation history for this phone number (last 30 messages)
-            const conversationHistory = this.getConversationHistory(phoneNumber, 30);
-            console.log(`📚 Retrieved ${conversationHistory.length} messages of conversation history`);
-
             // Process with AI if services are available
             if (this.openAI && this.openPhone && this.settings) {
                 console.log('🤖 Processing with AI...');
                 
-                // Use the enhanced context-aware processing
-                const aiResponse = await this.openAI.processMessageWithContext(
-                    messageBody, 
-                    conversationHistory,
-                    this.settings.business_name
-                );
-                
-                console.log('🎯 AI Response received:');
-                console.log('   Reply:', aiResponse.reply.substring(0, 100) + '...');
-                console.log('   Intent:', aiResponse.intent);
-                console.log('   Action:', aiResponse.action);
+                try {
+                    const aiResponse = await this.openAI.processMessage(
+                        messageBody, 
+                        this.settings.business_name
+                    );
 
-                // Check for quote generation request
-                const quoteGenerated = this.checkForQuoteGeneration(aiResponse, messageBody, conversationHistory);
-                if (quoteGenerated) {
-                    console.log('💰 Quote generated from conversation');
-                }
+                    console.log('🎯 AI Response received:', aiResponse);
 
-                // Check for booking confirmation - IMPROVED DETECTION
-                const isBookingConfirmed = this.checkForBookingConfirmation(aiResponse, messageBody, conversationHistory);
-                
-                if (isBookingConfirmed) {
-                    console.log('📅 BOOKING DETECTED! Creating appointment...');
-                    const appointment = this.createAppointmentFromConversation(phoneNumber, conversationHistory, messageBody, aiResponse);
-                    if (appointment) {
-                        console.log('✅ Appointment successfully created:', appointment);
-                        
-                        // Generate tech sheet for the appointment
-                        if (appointment.service_type && appointment.service_type !== 'Service TBD') {
-                            console.log('🔧 Generating tech sheet for appointment...');
-                            const techSheet = this.generateTechSheetFromAppointment(appointment);
-                            if (techSheet) {
-                                console.log('✅ Tech sheet generated:', techSheet.title);
-                            }
-                        }
-                    } else {
-                        console.log('❌ Failed to create appointment');
+                    // Check if it's an emergency
+                    if (this.isEmergency(aiResponse.intent)) {
+                        console.log('🚨 Emergency detected!');
                     }
-                }
 
-                // Check if it's an emergency
-                if (this.isEmergency(aiResponse.intent)) {
-                    console.log('🚨 Emergency detected!');
+                    // Send AI response
+                    await this.sendResponse(phoneNumber, aiResponse, message.id);
+                } catch (aiError) {
+                    console.error('❌ AI processing error:', aiError);
+                    // Continue without AI response
                 }
-
-                // Send AI response
-                await this.sendResponse(phoneNumber, aiResponse, message.id);
+            } else {
+                console.warn('⚠️ AI services not available - message stored only');
             }
-            else {
-                console.warn('⚠️  AI services not available - message stored only');
-            }
-        }
-        catch (error) {
+        } catch (error) {
             console.error('❌ Error processing message:', error);
             throw error;
-        }
-    }
-
-    /**
-     * NEW: Check for quote generation requests and create quotes
-     */
-    checkForQuoteGeneration(aiResponse, currentMessage, conversationHistory) {
-        const indicators = [
-            // AI intent indicates quote
-            aiResponse.intent && (
-                aiResponse.intent.toLowerCase().includes('quote request') ||
-                aiResponse.intent.toLowerCase().includes('estimate') ||
-                aiResponse.intent.toLowerCase().includes('pricing')
-            ),
-            
-            // AI reply mentions pricing
-            aiResponse.reply && (
-                aiResponse.reply.includes('$') ||
-                aiResponse.reply.toLowerCase().includes('cost') ||
-                aiResponse.reply.toLowerCase().includes('price') ||
-                aiResponse.reply.toLowerCase().includes('estimate')
-            ),
-            
-            // Customer message asks for quote
-            currentMessage && (
-                currentMessage.toLowerCase().includes('quote') ||
-                currentMessage.toLowerCase().includes('how much') ||
-                currentMessage.toLowerCase().includes('cost') ||
-                currentMessage.toLowerCase().includes('price')
-            )
-        ];
-        
-        const detectedIndicators = indicators.filter(Boolean);
-        console.log(`💰 Quote generation check: ${detectedIndicators.length} indicators found`);
-        
-        if (detectedIndicators.length >= 1) {
-            this.generateQuoteFromConversation(conversationHistory, currentMessage, aiResponse);
-            return true;
-        }
-        
-        return false;
-    }
-
-    /**
-     * NEW: Generate a quote from conversation analysis
-     */
-    generateQuoteFromConversation(conversationHistory, currentMessage, aiResponse) {
-        try {
-            console.log('💰 Generating quote from conversation...');
-            
-            // Extract customer and service information
-            const customerInfo = this.extractCustomerInfoFromConversation(conversationHistory, currentMessage);
-            const serviceInfo = this.extractServiceInfoFromConversation(conversationHistory, currentMessage);
-            
-            // Estimate labor hours based on service
-            const estimatedHours = this.estimateLaborHours(serviceInfo.description);
-            const laborRate = this.settings.labor_rate || 80;
-            const laborCost = estimatedHours * laborRate;
-            const partsCost = this.estimatePartsCost(serviceInfo.description);
-            const totalCost = laborCost + partsCost;
-            
-            const quote = {
-                id: Date.now().toString() + '_quote',
-                customer_name: customerInfo.name || 'Customer',
-                customer_phone: customerInfo.phone,
-                vehicle_info: customerInfo.vehicle || 'Vehicle TBD',
-                description: serviceInfo.description,
-                labor_hours: estimatedHours,
-                labor_rate: laborRate,
-                parts_cost: partsCost,
-                total_cost: totalCost,
-                status: 'draft',
-                created_at: new Date().toISOString(),
-                expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-                ai_generated: true,
-                source: 'sms_conversation'
-            };
-            
-            this.quotes.push(quote);
-            console.log('✅ Quote generated and stored:', quote);
-            
-            return quote;
-        } catch (error) {
-            console.error('❌ Error generating quote:', error);
-            return null;
-        }
-    }
-
-    /**
-     * NEW: Extract service information from conversation
-     */
-    extractServiceInfoFromConversation(conversationHistory, currentMessage) {
-        const allText = [
-            ...conversationHistory.slice(-10).map(msg => msg.body),
-            currentMessage
-        ].join(' ').toLowerCase();
-        
-        // Service detection patterns
-        const services = {
-            'oil change': ['oil change', 'oil service', 'change oil'],
-            'brake service': ['brake', 'brakes', 'brake pad', 'brake service'],
-            'tire service': ['tire', 'tires', 'tire rotation', 'tire replacement'],
-            'battery replacement': ['battery', 'dead battery', 'battery replacement'],
-            'transmission service': ['transmission', 'trans service', 'gear'],
-            'engine repair': ['engine', 'motor', 'engine repair'],
-            'diagnostic': ['diagnostic', 'check engine', 'diagnosis', 'scan'],
-            'tune up': ['tune up', 'tuneup', 'maintenance'],
-            'inspection': ['inspection', 'safety', 'emissions']
-        };
-        
-        let detectedService = 'General Service';
-        for (const [service, keywords] of Object.entries(services)) {
-            if (keywords.some(keyword => allText.includes(keyword))) {
-                detectedService = service;
-                break;
-            }
-        }
-        
-        return {
-            description: detectedService,
-            category: this.getServiceCategory(detectedService)
-        };
-    }
-
-    /**
-     * NEW: Estimate labor hours for different services
-     */
-    estimateLaborHours(serviceDescription) {
-        const service = serviceDescription.toLowerCase();
-        
-        const laborEstimates = {
-            'oil change': 0.5,
-            'brake service': 1.5,
-            'tire service': 1,
-            'battery replacement': 0.5,
-            'transmission service': 4,
-            'engine repair': 6,
-            'diagnostic': 1,
-            'tune up': 2,
-            'inspection': 1
-        };
-        
-        for (const [serviceType, hours] of Object.entries(laborEstimates)) {
-            if (service.includes(serviceType.replace(' ', ''))) {
-                return hours;
-            }
-        }
-        
-        return 1; // Default 1 hour
-    }
-
-    /**
-     * NEW: Estimate parts cost for different services
-     */
-    estimatePartsCost(serviceDescription) {
-        const service = serviceDescription.toLowerCase();
-        
-        const partsEstimates = {
-            'oil change': 45,
-            'brake service': 120,
-            'tire service': 200,
-            'battery replacement': 150,
-            'transmission service': 300,
-            'engine repair': 500,
-            'diagnostic': 0,
-            'tune up': 80,
-            'inspection': 0
-        };
-        
-        for (const [serviceType, cost] of Object.entries(partsEstimates)) {
-            if (service.includes(serviceType.replace(' ', ''))) {
-                return cost;
-            }
-        }
-        
-        return 50; // Default parts cost
-    }
-
-    /**
-     * NEW: Get service category for organization
-     */
-    getServiceCategory(serviceDescription) {
-        const service = serviceDescription.toLowerCase();
-        
-        if (service.includes('oil') || service.includes('tune') || service.includes('inspection')) {
-            return 'Maintenance';
-        }
-        if (service.includes('brake') || service.includes('tire') || service.includes('battery')) {
-            return 'Repair';
-        }
-        if (service.includes('engine') || service.includes('transmission')) {
-            return 'Major Repair';
-        }
-        if (service.includes('diagnostic')) {
-            return 'Diagnostic';
-        }
-        
-        return 'General';
-    }
-
-    /**
-     * IMPROVED booking detection that looks for multiple indicators
-     */
-    checkForBookingConfirmation(aiResponse, currentMessage, conversationHistory) {
-        const indicators = [
-            // Direct booking confirmation in action
-            aiResponse.action && aiResponse.action.includes('BOOKING_CONFIRMED:'),
-            
-            // Booking language in reply
-            aiResponse.reply && (
-                aiResponse.reply.toLowerCase().includes('scheduled') ||
-                aiResponse.reply.toLowerCase().includes('booked') ||
-                aiResponse.reply.toLowerCase().includes('appointment confirmed') ||
-                aiResponse.reply.toLowerCase().includes('see you on') ||
-                aiResponse.reply.toLowerCase().includes('see you thursday') ||
-                aiResponse.reply.toLowerCase().includes('see you monday') ||
-                aiResponse.reply.toLowerCase().includes('see you tuesday') ||
-                aiResponse.reply.toLowerCase().includes('see you wednesday') ||
-                aiResponse.reply.toLowerCase().includes('see you friday') ||
-                aiResponse.reply.toLowerCase().includes('i can schedule you') ||
-                aiResponse.reply.toLowerCase().includes('i\'ll get that scheduled')
-            ),
-            
-            // Intent indicates booking
-            aiResponse.intent && (
-                aiResponse.intent.toLowerCase().includes('booking confirmation') ||
-                aiResponse.intent.toLowerCase().includes('appointment') ||
-                aiResponse.intent.toLowerCase().includes('scheduled')
-            ),
-            
-            // Current message confirms appointment with specific time
-            currentMessage && (
-                (currentMessage.toLowerCase().includes('thursday') && currentMessage.toLowerCase().includes('10')) ||
-                (currentMessage.toLowerCase().includes('monday') && currentMessage.toLowerCase().includes('am')) ||
-                (currentMessage.toLowerCase().includes('tuesday') && currentMessage.toLowerCase().includes('am')) ||
-                (currentMessage.toLowerCase().includes('wednesday') && currentMessage.toLowerCase().includes('am')) ||
-                (currentMessage.toLowerCase().includes('friday') && currentMessage.toLowerCase().includes('am')) ||
-                (currentMessage.toLowerCase().includes('book') && currentMessage.toLowerCase().includes('am')) ||
-                (currentMessage.toLowerCase().includes('schedule') && currentMessage.toLowerCase().includes('am'))
-            )
-        ];
-        
-        const detectedIndicators = indicators.filter(Boolean);
-        console.log(`🔍 Booking detection check: ${detectedIndicators.length} indicators found`);
-        
-        return detectedIndicators.length >= 1; // At least 1 indicator needed
-    }
-
-    /**
-     * IMPROVED appointment creation from conversation context
-     */
-    createAppointmentFromConversation(phoneNumber, conversationHistory, currentMessage, aiResponse) {
-        try {
-            console.log('📅 Creating appointment from conversation...');
-            
-            // Extract customer information from conversation
-            const customerInfo = this.extractCustomerInfoFromConversation(conversationHistory, phoneNumber);
-            console.log('👤 Customer info extracted:', customerInfo);
-            
-            // Extract appointment details from AI action or conversation
-            const appointmentDetails = this.extractAppointmentDetailsImproved(conversationHistory, currentMessage, aiResponse);
-            console.log('📋 Appointment details extracted:', appointmentDetails);
-            
-            // Create appointment object
-            const appointment = {
-                id: Date.now().toString(),
-                customer_name: customerInfo.name || 'Customer',
-                customer_phone: phoneNumber,
-                vehicle_info: customerInfo.vehicle || 'Vehicle TBD',
-                service_type: customerInfo.service || 'General Service',
-                date: appointmentDetails.date,
-                time: appointmentDetails.time,
-                duration: 1, // Default 1 hour
-                status: 'scheduled',
-                notes: `Auto-booked from SMS conversation`,
-                created_at: new Date().toISOString()
-            };
-            
-            // Store appointment
-            this.appointments.push(appointment);
-            console.log('✅ Appointment stored in memory');
-            
-            // Update customer record
-            this.updateCustomerRecord(phoneNumber, customerInfo.name, customerInfo.vehicle, customerInfo.service);
-            
-            return appointment;
-        } catch (error) {
-            console.error('❌ Error creating appointment:', error);
-            return null;
-        }
-    }
-
-    /**
-     * IMPROVED appointment details extraction
-     */
-    extractAppointmentDetailsImproved(conversationHistory, currentMessage, aiResponse) {
-        // First check if AI action has BOOKING_CONFIRMED format
-        if (aiResponse.action && aiResponse.action.includes('BOOKING_CONFIRMED:')) {
-            const parts = aiResponse.action.split('|').map(p => p.trim());
-            if (parts.length >= 6) {
-                const dateStr = parts[4].trim();
-                const timeStr = parts[5].trim();
-                
-                console.log(`📋 Extracted from AI action - Date: ${dateStr}, Time: ${timeStr}`);
-                
-                return {
-                    date: this.parseBookingDate(dateStr),
-                    time: this.parseBookingTime(timeStr)
-                };
-            }
-        }
-        
-        // Fallback to analyzing all conversation text
-        const allText = [
-            ...conversationHistory.slice(-10).map(msg => msg.body),
-            currentMessage,
-            aiResponse.reply
-        ].join(' ').toLowerCase();
-        
-        console.log('🔍 Analyzing text for appointment details...');
-        
-        let date = this.parseBookingDate(allText);
-        let time = this.parseBookingTime(allText);
-        
-        console.log(`📅 Final parsed - Date: ${date}, Time: ${time}`);
-        
-        return { date, time };
-    }
-
-    /**
-     * Generates a tech sheet from an appointment
-     */
-    generateTechSheetFromAppointment(appointment) {
-        try {
-            const techSheet = {
-                id: Date.now().toString() + '_tech',
-                title: `${appointment.service_type} - ${appointment.vehicle_info}`,
-                description: `${appointment.service_type} for ${appointment.vehicle_info}`,
-                vehicle_info: appointment.vehicle_info,
-                customer_name: appointment.customer_name,
-                estimated_time: 1.5,
-                difficulty: 'Medium',
-                tools_required: this.getToolsForService(appointment.service_type),
-                parts_needed: this.getPartsForService(appointment.service_type),
-                safety_warnings: this.getSafetyWarningsForService(appointment.service_type),
-                step_by_step: this.getStepsForService(appointment.service_type),
-                tips: this.getTipsForService(appointment.service_type),
-                created_at: new Date().toISOString(),
-                generated_by: 'manual',
-                source: 'booking',
-                quote_id: appointment.id
-            };
-            
-            this.techSheets.push(techSheet);
-            console.log('✅ Tech sheet generated and stored');
-            return techSheet;
-        } catch (error) {
-            console.error('❌ Error generating tech sheet:', error);
-            return null;
-        }
-    }
-
-    /**
-     * Helper methods for tech sheet generation
-     */
-    getToolsForService(service) {
-        const serviceType = service.toLowerCase();
-        if (serviceType.includes('oil')) return ['Oil drain pan', 'Socket wrench', 'Oil filter wrench', 'Funnel'];
-        if (serviceType.includes('brake')) return ['Brake tools', 'C-clamp', 'Socket set', 'Torque wrench'];
-        if (serviceType.includes('tire')) return ['Tire iron', 'Jack', 'Jack stands', 'Torque wrench'];
-        return ['Basic hand tools', 'Socket set', 'Wrench set'];
-    }
-
-    getPartsForService(service) {
-        const serviceType = service.toLowerCase();
-        if (serviceType.includes('oil')) return ['Engine oil', 'Oil filter', 'Drain plug gasket'];
-        if (serviceType.includes('brake')) return ['Brake pads', 'Brake fluid', 'Hardware kit'];
-        if (serviceType.includes('tire')) return ['Tires', 'Valve stems', 'Wheel weights'];
-        return ['As specified in service request'];
-    }
-
-    getSafetyWarningsForService(service) {
-        const serviceType = service.toLowerCase();
-        if (serviceType.includes('oil')) return ['Engine may be hot', 'Dispose of oil properly', 'Wear gloves'];
-        if (serviceType.includes('brake')) return ['Never work under vehicle without proper support', 'Brake fluid is corrosive', 'Test brakes before driving'];
-        if (serviceType.includes('tire')) return ['Never work under vehicle supported only by jack', 'Check tire pressure when cold', 'Inspect for damage'];
-        return ['Wear safety glasses', 'Use proper lifting techniques', 'Ensure vehicle is secure'];
-    }
-
-    getStepsForService(service) {
-        const serviceType = service.toLowerCase();
-        if (serviceType.includes('oil')) return [
-            'Warm engine to operating temperature',
-            'Lift vehicle and locate drain plug',
-            'Drain old oil completely',
-            'Replace oil filter',
-            'Install new drain plug with gasket',
-            'Lower vehicle and add new oil',
-            'Check oil level and for leaks'
-        ];
-        if (serviceType.includes('brake')) return [
-            'Lift vehicle and remove wheels',
-            'Inspect brake system components',
-            'Remove old brake pads',
-            'Clean and lubricate caliper slides',
-            'Install new brake pads',
-            'Bleed brake system if needed',
-            'Test brake pedal feel and function'
-        ];
-        return [
-            'Assess the vehicle and confirm the issue',
-            'Gather all required tools and parts',
-            'Follow manufacturer specifications',
-            'Perform the repair work carefully',
-            'Test functionality after completion',
-            'Clean up work area and dispose of waste properly'
-        ];
-    }
-
-    getTipsForService(service) {
-        const serviceType = service.toLowerCase();
-        if (serviceType.includes('oil')) return ['Use correct oil viscosity', 'Reset oil life monitor', 'Keep maintenance records'];
-        if (serviceType.includes('brake')) return ['Always replace pads in pairs', 'Check rotor condition', 'Pump brakes before driving'];
-        if (serviceType.includes('tire')) return ['Rotate tires regularly', 'Check alignment if wear is uneven', 'Keep spare tire inflated'];
-        return ['Take photos before disassembly', 'Keep parts organized', 'Refer to service manual'];
-    }
-
-    /**
-     * IMPROVED customer info extraction
-     */
-    extractCustomerInfoFromConversation(conversationHistory, phoneNumber) {
-        let name = null;
-        let vehicle = null;
-        let service = null;
-        
-        // Look through conversation for customer details
-        conversationHistory.forEach(msg => {
-            const text = msg.body.toLowerCase();
-            
-            // Look for name patterns
-            if (!name) {
-                const nameMatch = text.match(/(?:my name is|i'm|this is|call me)\s+([a-zA-Z]+)/i);
-                if (nameMatch) {
-                    name = nameMatch[1];
-                }
-            }
-            
-            // Look for vehicle patterns - IMPROVED
-            if (!vehicle) {
-                const vehicleMatch = text.match(/(\d{4})\s+(ford|chevy|chevrolet|dodge|toyota|honda|nissan|bmw|mercedes|audi|volkswagen|vw|subaru|mazda|hyundai|kia|jeep|ram|gmc|cadillac|buick|lincoln|acura|infiniti|lexus|volvo)\s+(\w+)/i);
-                if (vehicleMatch) {
-                    vehicle = `${vehicleMatch[1]} ${vehicleMatch[2]} ${vehicleMatch[3]}`;
-                } else {
-                    const simpleVehicleMatch = text.match(/(ford|chevy|chevrolet|dodge|toyota|honda|nissan|bmw|mercedes|audi|volkswagen|vw|subaru|mazda|hyundai|kia|jeep|ram|gmc|cadillac|buick|lincoln|acura|infiniti|lexus|volvo)\s+(\w+)/i);
-                    if (simpleVehicleMatch) {
-                        vehicle = `${simpleVehicleMatch[1]} ${simpleVehicleMatch[2]}`;
-                    }
-                }
-            }
-            
-            // Look for service patterns - IMPROVED
-            if (!service) {
-                const services = ['oil change', 'brake service', 'brake repair', 'tire service', 'transmission', 'engine repair', 'battery replacement', 'tune up', 'inspection', 'diagnostic'];
-                for (const svc of services) {
-                    if (text.includes(svc)) {
-                        service = svc;
-                        break;
-                    }
-                }
-            }
-        });
-        
-        return { name, vehicle, service, phone: phoneNumber };
-    }
-
-    /**
-     * IMPROVED date parsing
-     */
-    parseBookingDate(text) {
-        const today = new Date();
-        const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-        const lowerText = text.toLowerCase();
-        
-        console.log('📅 Parsing date from text...');
-        
-        // Find the day of the week
-        for (let i = 0; i < dayNames.length; i++) {
-            if (lowerText.includes(dayNames[i])) {
-                const targetDay = i;
-                const currentDay = today.getDay();
-                
-                console.log(`📅 Found day: ${dayNames[i]} (${targetDay}), current day: ${currentDay}`);
-                
-                // Calculate days until target day
-                let daysUntil = targetDay - currentDay;
-                if (daysUntil <= 0) {
-                    daysUntil += 7; // Next week
-                }
-                
-                const appointmentDate = new Date(today);
-                appointmentDate.setDate(today.getDate() + daysUntil);
-                const dateStr = appointmentDate.toISOString().split('T')[0];
-                
-                console.log(`📅 Calculated appointment date: ${dateStr}`);
-                return dateStr;
-            }
-        }
-        
-        // Default to tomorrow if we can't parse
-        const tomorrow = new Date(today);
-        tomorrow.setDate(today.getDate() + 1);
-        const dateStr = tomorrow.toISOString().split('T')[0];
-        
-        console.log(`📅 Using default date (tomorrow): ${dateStr}`);
-        return dateStr;
-    }
-
-    /**
-     * IMPROVED time parsing
-     */
-    parseBookingTime(text) {
-        const lowerText = text.toLowerCase();
-        
-        console.log('🕐 Parsing time from text...');
-        
-        // Look for specific time mentions first
-        if (lowerText.includes('10am') || lowerText.includes('10 am')) {
-            console.log('🕐 Found 10am mention');
-            return '10:00';
-        }
-        if (lowerText.includes('10pm') || lowerText.includes('10 pm')) {
-            console.log('🕐 Found 10pm mention');
-            return '22:00';
-        }
-        if (lowerText.includes('9am') || lowerText.includes('9 am')) {
-            return '09:00';
-        }
-        if (lowerText.includes('11am') || lowerText.includes('11 am')) {
-            return '11:00';
-        }
-        if (lowerText.includes('2pm') || lowerText.includes('2 pm')) {
-            return '14:00';
-        }
-        if (lowerText.includes('3pm') || lowerText.includes('3 pm')) {
-            return '15:00';
-        }
-        
-        // Extract time patterns
-        const timeMatch = lowerText.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
-        if (timeMatch) {
-            let hour = parseInt(timeMatch[1]);
-            const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
-            const ampm = timeMatch[3];
-            
-            console.log(`🕐 Found time components: hour=${hour}, minute=${minute}, ampm=${ampm}`);
-            
-            // Convert to 24-hour format
-            if (ampm === 'pm' && hour !== 12) {
-                hour += 12;
-            } else if (ampm === 'am' && hour === 12) {
-                hour = 0;
-            }
-            
-            // Format as HH:MM
-            const timeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-            console.log(`🕐 Formatted time: ${timeStr}`);
-            return timeStr;
-        }
-        
-        // Default to 10:00 AM if we can't parse
-        console.log('🕐 Using default time: 10:00');
-        return '10:00';
-    }
-
-    /**
-     * Gets conversation history for a specific phone number
-     */
-    getConversationHistory(phoneNumber, limit = 30) {
-        return this.messages
-            .filter(msg => msg.phone_number === phoneNumber)
-            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-            .slice(-limit);
-    }
-
-    /**
-     * Updates customer record with new information
-     */
-    updateCustomerRecord(phoneNumber, customerName, vehicle, service) {
-        try {
-            let customer = this.customers.find(c => c.phone_number === phoneNumber);
-            
-            if (!customer) {
-                customer = {
-                    id: Date.now().toString(),
-                    phone_number: phoneNumber,
-                    full_name: customerName,
-                    vehicles: [],
-                    service_history: [],
-                    notes: [],
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString()
-                };
-                this.customers.push(customer);
-                console.log('👤 New customer created:', customer.full_name);
-            }
-            
-            if (customerName && customerName !== 'Customer') {
-                customer.full_name = customerName;
-            }
-            
-            if (vehicle && vehicle !== 'Vehicle TBD' && !customer.vehicles.some(v => v.details === vehicle)) {
-                customer.vehicles.push({
-                    details: vehicle,
-                    added_at: new Date().toISOString()
-                });
-                console.log('🚗 Vehicle added to customer:', vehicle);
-            }
-            
-            if (service && service !== 'Service TBD') {
-                customer.service_history.push({
-                    date: new Date().toISOString(),
-                    inquiry: service,
-                    type: 'Appointment Booking'
-                });
-                console.log('🔧 Service history updated:', service);
-            }
-            
-            customer.updated_at = new Date().toISOString();
-            
-        } catch (error) {
-            console.error('❌ Error updating customer record:', error);
         }
     }
 
@@ -778,7 +135,7 @@ export class MessageProcessor {
         }
 
         try {
-            console.log(`📤 Sending response to ${phoneNumber}`);
+            console.log(`📤 Sending response to ${phoneNumber}: "${aiResponse.reply}"`);
 
             // Send SMS response
             await this.openPhone.sendSMS(phoneNumber, aiResponse.reply);
@@ -810,8 +167,7 @@ export class MessageProcessor {
             }
 
             console.log('✅ AI response sent successfully');
-        }
-        catch (error) {
+        } catch (error) {
             console.error('❌ Error sending response:', error);
             throw error;
         }
@@ -827,8 +183,7 @@ export class MessageProcessor {
     async isDndEnabled() {
         try {
             return process.env.DND_ENABLED === 'true';
-        }
-        catch {
+        } catch {
             return false;
         }
     }
@@ -884,8 +239,7 @@ export class MessageProcessor {
 
             this.messages.unshift(outboundMessage);
             console.log('✅ Manual reply sent successfully');
-        }
-        catch (error) {
+        } catch (error) {
             console.error('❌ Error sending manual reply:', error);
             throw error;
         }
