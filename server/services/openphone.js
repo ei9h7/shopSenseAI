@@ -4,10 +4,20 @@ const OPENPHONE_API_URL = 'https://api.openphone.com/v1';
 export class OpenPhoneService {
     apiKey;
     phoneNumber;
+    phoneNumberId; // Store the phoneNumberId from webhook
 
-    constructor(apiKey, phoneNumber) {
+    constructor(apiKey, phoneNumber, phoneNumberId = null) {
         this.apiKey = apiKey;
         this.phoneNumber = phoneNumber;
+        this.phoneNumberId = phoneNumberId;
+    }
+
+    /**
+     * Updates the phoneNumberId when we receive it from webhook data
+     */
+    setPhoneNumberId(phoneNumberId) {
+        this.phoneNumberId = phoneNumberId;
+        console.log(`📱 Updated phoneNumberId: ${phoneNumberId}`);
     }
 
     async sendSMS(to, message) {
@@ -57,7 +67,7 @@ export class OpenPhoneService {
     }
     
     /**
-     * Gets messages from OpenPhone API following the official documentation
+     * Gets messages using the correct OpenPhone API format with required parameters
      * https://www.openphone.com/docs/mdx/api-reference/messages/list-messages
      */
     async getMessages(phoneNumber = null, limit = 50) {
@@ -65,20 +75,31 @@ export class OpenPhoneService {
             console.log(`📞 Fetching messages from OpenPhone API...`);
             console.log(`   Phone filter: ${phoneNumber || 'All conversations'}`);
             console.log(`   Limit: ${limit}`);
+            console.log(`   PhoneNumberId: ${this.phoneNumberId || 'Not available'}`);
             
             // Build query parameters according to OpenPhone API docs
             const params = new URLSearchParams();
             
-            // Add limit parameter (required)
-            params.append('limit', Math.min(limit, 100).toString()); // Max 100 per docs
+            // Add limit parameter (required, max 100)
+            params.append('limit', Math.min(limit, 100).toString());
             
-            // Add phone number filter if provided
-            // According to docs, we can filter by phoneNumberId, but we need to convert phone number to phoneNumberId
-            // For now, we'll fetch all and filter client-side since phone number filtering requires phoneNumberId
-            
-            // Optional: Add other filters from the docs
-            // params.append('direction', 'inbound'); // or 'outbound'
-            // params.append('status', 'received'); // or 'sent', 'failed', etc.
+            // Method 1: Use phoneNumberId if available (from webhook data)
+            if (this.phoneNumberId) {
+                params.append('phoneNumberId', this.phoneNumberId);
+                console.log(`🎯 Using phoneNumberId filter: ${this.phoneNumberId}`);
+            }
+            // Method 2: Use participants array if we have a specific phone number
+            else if (phoneNumber) {
+                // According to OpenPhone docs, participants should be an array of phone numbers
+                params.append('participants', JSON.stringify([phoneNumber, this.phoneNumber]));
+                console.log(`🎯 Using participants filter: [${phoneNumber}, ${this.phoneNumber}]`);
+            }
+            // Method 3: If we have neither, we need to provide at least one required parameter
+            else {
+                // Use participants with just our phone number to get all conversations
+                params.append('participants', JSON.stringify([this.phoneNumber]));
+                console.log(`🎯 Using participants filter with our number: [${this.phoneNumber}]`);
+            }
             
             const url = `${OPENPHONE_API_URL}/messages?${params.toString()}`;
             console.log(`📡 Requesting: ${url}`);
@@ -133,7 +154,7 @@ export class OpenPhoneService {
                 }
             }
             
-            // If we have a specific phone number, filter messages client-side
+            // If we have a specific phone number, filter messages client-side as backup
             if (phoneNumber && messages.length > 0) {
                 const filteredMessages = messages.filter(msg => {
                     // Normalize phone numbers for comparison (remove +, spaces, etc.)
@@ -170,10 +191,11 @@ export class OpenPhoneService {
                 
                 // Check for specific error codes mentioned in OpenPhone docs
                 if (error.response.status === 400) {
-                    console.error('❌ Bad Request - Check query parameters');
-                    console.error('   - Ensure limit is between 1-100');
-                    console.error('   - Check phoneNumberId format if used');
-                    console.error('   - Verify other query parameters');
+                    console.error('❌ Bad Request - Parameter issues:');
+                    console.error('   - phoneNumberId format should be: PN...');
+                    console.error('   - participants should be JSON array of phone numbers');
+                    console.error('   - One of phoneNumberId OR participants is required');
+                    console.error(`   - Current phoneNumberId: ${this.phoneNumberId || 'Not set'}`);
                 }
                 
                 if (error.response.status === 401) {
@@ -203,14 +225,14 @@ export class OpenPhoneService {
     
     /**
      * Gets conversation history for a specific phone number
-     * Uses the corrected API format and better error handling
+     * Uses the corrected API format with required parameters
      */
     async getConversationHistory(phoneNumber, limit = 20) {
         try {
             console.log(`💬 Getting conversation history for ${phoneNumber}`);
             
-            // Get all recent messages and filter for this conversation
-            const allMessages = await this.getMessages(null, Math.min(limit * 3, 100)); // Get more to ensure we have enough after filtering
+            // Get messages using the corrected API call
+            const allMessages = await this.getMessages(phoneNumber, Math.min(limit * 2, 100));
             
             if (allMessages.length === 0) {
                 console.log('📭 No messages retrieved from OpenPhone API');

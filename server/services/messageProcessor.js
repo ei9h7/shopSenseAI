@@ -31,6 +31,7 @@ export class MessageProcessor {
             }
 
             if (this.settings.openphone_api_key && this.settings.phone_number) {
+                // Initialize OpenPhone service (phoneNumberId will be set later from webhook)
                 this.openPhone = new OpenPhoneService(this.settings.openphone_api_key, this.settings.phone_number);
                 console.log('✅ OpenPhone service initialized');
                 console.log(`📱 Using OpenPhone number: ${this.settings.phone_number}`);
