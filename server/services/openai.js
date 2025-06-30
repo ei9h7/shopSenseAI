@@ -10,7 +10,7 @@ export class OpenAIService {
 
     /**
      * Processes a message with full conversation context and customer data collection
-     * Enhanced to gather customer information systematically
+     * Enhanced to be less aggressive and more natural in conversation
      */
     async processMessageWithContext(messageBody, conversationHistory, businessName = 'Pink Chicken Speed Shop') {
         try {
@@ -23,19 +23,26 @@ export class OpenAIService {
                     role: 'system',
                     content: `You are a professional, friendly assistant for ${businessName}, an automotive repair shop. 
 
-CUSTOMER DATA COLLECTION PRIORITY:
-You must systematically gather customer information in this order:
-1. First Name and Last Name (ask naturally: "What's your name?" or "Can I get your name for our records?")
-2. Check if they're a repeat customer ("Have you been to our shop before?" or "Are you a returning customer?")
-3. If new customer, get their address ("What's your address for our records?")
-4. Vehicle details (year, make, model, mileage if relevant)
-5. Contact preferences and any special notes
+CONVERSATION STYLE:
+- Be natural and conversational, not pushy or aggressive
+- Don't ask for information one thing at a time like a form
+- Take whatever information the customer gives you naturally
+- Don't push for address unless absolutely necessary for service
+- Focus on helping them with their actual need first
+- Collect info organically during natural conversation
+
+CUSTOMER DATA COLLECTION (when natural):
+If you need customer info, ask for what's most relevant:
+1. Name (only if needed for booking/service)
+2. Vehicle details (year, make, model - only what they provide)
+3. Contact info (only if booking an appointment)
+4. Service needed (focus on this first)
 
 APPOINTMENT BOOKING:
 When customers want to schedule service:
 - Suggest specific days and times (Monday-Friday, 8am-5pm)
 - Confirm their preferred date and time
-- Get all required info: name, phone, vehicle, service needed
+- Get essential info: name, vehicle, service needed
 - Use this EXACT format when booking is confirmed:
   "BOOKING_CONFIRMED: [Customer Name] | [Phone] | [Vehicle] | [Service] | [Date] | [Time]"
 
@@ -45,17 +52,15 @@ ${this.formatCustomerInfoStatus(customerInfo)}
 CONVERSATION RULES:
 - Use the conversation history to provide contextual responses
 - If customer says "yes" or agrees, refer to what they're agreeing to based on context
-- Gather missing customer information naturally during the conversation
-- Don't ask for all information at once - spread it across the conversation
-- Always acknowledge what they've already provided
-- For repeat customers, confirm their existing information instead of re-collecting
+- Be helpful and focus on their actual automotive needs
+- Don't interrogate them - have a natural conversation
 - Your labor rate is $80/hr with a 1-hour minimum ($20 per 15 min extra)
 
 RESPONSE FORMAT:
-Reply: [The contextual message that naturally collects missing info]
-Intent: [e.g. Quote Request, Booking Confirmation, Customer Data Collection, Emergency]
-Action: [e.g. Collect customer name, Verify repeat customer, Schedule appointment]
-CustomerData: [JSON object with any new customer data collected]`
+Reply: [The natural, helpful message that addresses their need]
+Intent: [e.g. Quote Request, Booking Confirmation, Service Inquiry, Emergency]
+Action: [e.g. Provide quote, Schedule appointment, Ask for vehicle details]
+CustomerData: [JSON object with any new customer data collected naturally]`
                 }
             ];
 
@@ -73,22 +78,22 @@ ${recentHistory.map(msg =>
 
 CURRENT MESSAGE FROM CUSTOMER: "${messageBody}"
 
-Based on this conversation and the customer information status above, provide a contextual response that:
+Based on this conversation, provide a natural, helpful response that:
 1. Addresses their current message appropriately
-2. Naturally collects any missing customer information
-3. Moves the conversation forward toward booking/service
-4. If they want to book an appointment, suggest specific times and confirm details`
+2. Focuses on their automotive service needs
+3. Moves the conversation forward naturally
+4. If they want to book an appointment, confirm details and use BOOKING_CONFIRMED format`
                 });
             } else {
-                // New conversation - start with greeting and name collection
+                // New conversation - start naturally
                 messages.push({
                     role: 'user',
                     content: `NEW CUSTOMER MESSAGE: "${messageBody}"
 
-This is a new conversation. Provide a professional response that:
-1. Addresses their inquiry
-2. Naturally asks for their name
-3. Sets up for gathering more customer information`
+This is a new conversation. Provide a professional, natural response that:
+1. Addresses their automotive inquiry helpfully
+2. Focuses on their service needs first
+3. Only asks for essential info if needed for their specific request`
                 });
             }
 
@@ -250,33 +255,19 @@ This is a new conversation. Provide a professional response that:
         if (info.fullName) {
             status.push(`✅ Name: ${info.fullName}`);
         } else {
-            status.push(`❌ Name: Not collected`);
-        }
-
-        if (info.isRepeatCustomer !== null) {
-            status.push(`✅ Customer Type: ${info.isRepeatCustomer ? 'Repeat Customer' : 'New Customer'}`);
-        } else {
-            status.push(`❌ Customer Type: Unknown`);
-        }
-
-        if (info.address) {
-            status.push(`✅ Address: ${info.address}`);
-        } else if (info.isRepeatCustomer === false) {
-            status.push(`❌ Address: Needed for new customer`);
-        } else {
-            status.push(`⏳ Address: May need verification`);
+            status.push(`❓ Name: Not provided (ask only if booking appointment)`);
         }
 
         if (info.vehicle.details) {
             status.push(`✅ Vehicle: ${info.vehicle.details}`);
         } else {
-            status.push(`❌ Vehicle: Not fully specified`);
+            status.push(`❓ Vehicle: Not specified (ask only if relevant to service)`);
         }
 
         if (info.serviceNeeded) {
             status.push(`✅ Service: ${info.serviceNeeded}`);
         } else {
-            status.push(`❌ Service: Not specified`);
+            status.push(`❓ Service: Not specified (focus on understanding their need)`);
         }
 
         return status.join('\n');
@@ -290,7 +281,7 @@ This is a new conversation. Provide a professional response that:
     }
 
     getIntelligentFallback(messageBody, conversationHistory = []) {
-        // Enhanced fallback logic with customer data collection and booking
+        // Enhanced fallback logic with natural conversation and booking
         const lowerMessage = messageBody.toLowerCase();
         const customerInfo = this.extractCustomerInfo(conversationHistory, messageBody);
 
@@ -314,20 +305,10 @@ This is a new conversation. Provide a professional response that:
                     lastOutboundMessage.body.toLowerCase().includes('appointment') ||
                     lastOutboundMessage.body.toLowerCase().includes('bring')) {
                     
-                    // Collect name if we don't have it
-                    if (!customerInfo.fullName) {
-                        return {
-                            reply: "Perfect! I'd be happy to schedule that for you. Can I get your name for our appointment book?",
-                            intent: "Customer Data Collection",
-                            action: "Collect customer name for appointment",
-                            customerData: {}
-                        };
-                    }
-                    
                     return {
-                        reply: `Great ${customerInfo.firstName || 'there'}! I'll get that appointment scheduled for you. I'll be in touch shortly with available times. Thanks for choosing Pink Chicken Speed Shop!`,
+                        reply: `Perfect! I'll get that scheduled for you. Thanks for choosing Pink Chicken Speed Shop!`,
                         intent: "Booking Confirmation",
-                        action: "Schedule appointment and send confirmation",
+                        action: `BOOKING_CONFIRMED: ${customerInfo.fullName || 'Customer'} | ${customerInfo.phoneNumber || 'Phone needed'} | ${customerInfo.vehicle.details || 'Vehicle TBD'} | ${customerInfo.serviceNeeded || 'Service TBD'} | Next available | 10:00`,
                         customerData: customerInfo
                     };
                 }
@@ -352,7 +333,7 @@ This is a new conversation. Provide a professional response that:
             }
         }
 
-        // Check for booking/appointment requests
+        // Check for booking/appointment requests with specific day/time
         if (lowerMessage.includes('appointment') ||
             lowerMessage.includes('schedule') ||
             lowerMessage.includes('book') ||
@@ -364,30 +345,21 @@ This is a new conversation. Provide a professional response that:
             lowerMessage.includes('wednesday') ||
             lowerMessage.includes('friday')) {
             
-            if (!customerInfo.fullName) {
-                return {
-                    reply: "I'd be happy to schedule an appointment for you! We're open Monday-Friday, 8am-5pm. Can I get your name first?",
-                    intent: "Booking Request + Data Collection",
-                    action: "Collect customer name for appointment",
-                    customerData: {}
-                };
-            }
-            
             // Check if they mentioned a specific day/time
             const timeMatch = lowerMessage.match(/(monday|tuesday|wednesday|thursday|friday).*?(\d{1,2}(?:am|pm|:\d{2}(?:am|pm)?)?)/i);
             if (timeMatch) {
                 const day = timeMatch[1];
                 const time = timeMatch[2];
                 return {
-                    reply: `Perfect ${customerInfo.firstName}! I can schedule you for ${day} at ${time}. What vehicle will you be bringing in and what service do you need?`,
+                    reply: `Perfect! I can schedule you for ${day} at ${time}. I'll confirm the details and see you then!`,
                     intent: "Booking Confirmation",
-                    action: `BOOKING_CONFIRMED: ${customerInfo.fullName} | ${customerInfo.phoneNumber || 'Phone needed'} | ${customerInfo.vehicle.details || 'Vehicle needed'} | Service needed | ${day} | ${time}`,
+                    action: `BOOKING_CONFIRMED: ${customerInfo.fullName || 'Customer'} | Phone needed | ${customerInfo.vehicle.details || 'Vehicle TBD'} | ${customerInfo.serviceNeeded || 'Service TBD'} | ${day} | ${time}`,
                     customerData: customerInfo
                 };
             }
             
             return {
-                reply: `Thanks for wanting to schedule service, ${customerInfo.firstName}! We're open Monday-Friday, 8am-5pm. What day works best for you?`,
+                reply: `I'd be happy to schedule an appointment for you! We're open Monday-Friday, 8am-5pm. What day and time works best for you?`,
                 intent: "Booking Request",
                 action: "Collect preferred appointment time",
                 customerData: customerInfo
@@ -417,19 +389,10 @@ This is a new conversation. Provide a professional response that:
             lowerMessage.includes('tune up') ||
             lowerMessage.includes('inspection')) {
             
-            if (!customerInfo.fullName) {
-                return {
-                    reply: "Hi! Thanks for reaching out about service. I'd be happy to help with your vehicle maintenance. My rate is $80/hr with a 1-hour minimum. Can I get your name to get started?",
-                    intent: "Service Request + Data Collection",
-                    action: "Collect customer name for service inquiry",
-                    customerData: {}
-                };
-            }
-            
             return {
-                reply: `Hi ${customerInfo.firstName}! Thanks for reaching out about service. I'd be happy to help with your vehicle maintenance. My rate is $80/hr with a 1-hour minimum. I'll get back to you shortly with more details!`,
+                reply: `Hi! Thanks for reaching out about service. I'd be happy to help with your vehicle maintenance. My rate is $80/hr with a 1-hour minimum. What vehicle are you bringing in and what service do you need?`,
                 intent: "Service Request",
-                action: "Follow up with service quote",
+                action: "Collect vehicle and service details",
                 customerData: customerInfo
             };
         }
@@ -441,19 +404,10 @@ This is a new conversation. Provide a professional response that:
             lowerMessage.includes('estimate') ||
             lowerMessage.includes('how much')) {
             
-            if (!customerInfo.fullName) {
-                return {
-                    reply: "Thanks for your quote request! I'd be happy to provide an estimate. My labor rate is $80/hr with a 1-hour minimum. What's your name so I can prepare a personalized quote for you?",
-                    intent: "Quote Request + Data Collection",
-                    action: "Collect customer name for quote",
-                    customerData: {}
-                };
-            }
-            
             return {
-                reply: `Thanks for your quote request, ${customerInfo.firstName}! I'd be happy to provide an estimate. My labor rate is $80/hr with a 1-hour minimum. I'll review your message and get back to you with a detailed quote soon.`,
+                reply: `Thanks for your quote request! I'd be happy to provide an estimate. My labor rate is $80/hr with a 1-hour minimum. What vehicle and what service are you looking to get done?`,
                 intent: "Quote Request",
-                action: "Prepare detailed quote",
+                action: "Collect vehicle and service details for quote",
                 customerData: customerInfo
             };
         }
@@ -467,17 +421,8 @@ This is a new conversation. Provide a professional response that:
             lowerMessage.includes('won\'t start') ||
             lowerMessage.includes('not working')) {
             
-            if (!customerInfo.fullName) {
-                return {
-                    reply: "I received your message about the issue with your vehicle. I'll take a look at what you've described and get back to you with next steps. My diagnostic rate is $80/hr. What's your name so I can help you properly?",
-                    intent: "Repair Request + Data Collection",
-                    action: "Collect customer name for repair inquiry",
-                    customerData: {}
-                };
-            }
-            
             return {
-                reply: `Hi ${customerInfo.firstName}! I received your message about the issue with your vehicle. I'll take a look at what you've described and get back to you with next steps. My diagnostic rate is $80/hr. Thanks for reaching out!`,
+                reply: `I can help you with that issue. My diagnostic rate is $80/hr. Can you tell me what vehicle you have and describe what's happening?`,
                 intent: "Repair Request",
                 action: "Diagnose issue and provide solution",
                 customerData: customerInfo
@@ -485,19 +430,10 @@ This is a new conversation. Provide a professional response that:
         }
 
         // Default response for any other message
-        if (!customerInfo.fullName) {
-            return {
-                reply: "Hi! Thanks for your message. I'm Pink Chicken Speed Shop and I received your inquiry. I'll review it and get back to you personally within the hour. My rate is $80/hr. What's your name so I can assist you properly?",
-                intent: "General Inquiry + Data Collection",
-                action: "Collect customer name and review message",
-                customerData: {}
-            };
-        }
-        
         return {
-            reply: `Hi ${customerInfo.firstName}! Thanks for your message. I'm Pink Chicken Speed Shop and I received your inquiry. I'll review it and get back to you personally within the hour. My rate is $80/hr. Thanks for choosing us!`,
+            reply: `Hi! Thanks for your message. I'm Pink Chicken Speed Shop and I'd be happy to help with your automotive needs. My rate is $80/hr. What can I help you with today?`,
             intent: "General Inquiry",
-            action: "Review message and provide personalized response",
+            action: "Understand customer need",
             customerData: customerInfo
         };
     }
