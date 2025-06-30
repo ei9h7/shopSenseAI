@@ -95,6 +95,12 @@ export class MessageProcessor {
                 console.log('   Intent:', aiResponse.intent);
                 console.log('   Action:', aiResponse.action);
 
+                // Check for quote generation request
+                const quoteGenerated = this.checkForQuoteGeneration(aiResponse, messageBody, conversationHistory);
+                if (quoteGenerated) {
+                    console.log('💰 Quote generated from conversation');
+                }
+
                 // Check for booking confirmation - IMPROVED DETECTION
                 const isBookingConfirmed = this.checkForBookingConfirmation(aiResponse, messageBody, conversationHistory);
                 
@@ -133,6 +139,203 @@ export class MessageProcessor {
             console.error('❌ Error processing message:', error);
             throw error;
         }
+    }
+
+    /**
+     * NEW: Check for quote generation requests and create quotes
+     */
+    checkForQuoteGeneration(aiResponse, currentMessage, conversationHistory) {
+        const indicators = [
+            // AI intent indicates quote
+            aiResponse.intent && (
+                aiResponse.intent.toLowerCase().includes('quote request') ||
+                aiResponse.intent.toLowerCase().includes('estimate') ||
+                aiResponse.intent.toLowerCase().includes('pricing')
+            ),
+            
+            // AI reply mentions pricing
+            aiResponse.reply && (
+                aiResponse.reply.includes('$') ||
+                aiResponse.reply.toLowerCase().includes('cost') ||
+                aiResponse.reply.toLowerCase().includes('price') ||
+                aiResponse.reply.toLowerCase().includes('estimate')
+            ),
+            
+            // Customer message asks for quote
+            currentMessage && (
+                currentMessage.toLowerCase().includes('quote') ||
+                currentMessage.toLowerCase().includes('how much') ||
+                currentMessage.toLowerCase().includes('cost') ||
+                currentMessage.toLowerCase().includes('price')
+            )
+        ];
+        
+        const detectedIndicators = indicators.filter(Boolean);
+        console.log(`💰 Quote generation check: ${detectedIndicators.length} indicators found`);
+        
+        if (detectedIndicators.length >= 1) {
+            this.generateQuoteFromConversation(conversationHistory, currentMessage, aiResponse);
+            return true;
+        }
+        
+        return false;
+    }
+
+    /**
+     * NEW: Generate a quote from conversation analysis
+     */
+    generateQuoteFromConversation(conversationHistory, currentMessage, aiResponse) {
+        try {
+            console.log('💰 Generating quote from conversation...');
+            
+            // Extract customer and service information
+            const customerInfo = this.extractCustomerInfoFromConversation(conversationHistory, currentMessage);
+            const serviceInfo = this.extractServiceInfoFromConversation(conversationHistory, currentMessage);
+            
+            // Estimate labor hours based on service
+            const estimatedHours = this.estimateLaborHours(serviceInfo.description);
+            const laborRate = this.settings.labor_rate || 80;
+            const laborCost = estimatedHours * laborRate;
+            const partsCost = this.estimatePartsCost(serviceInfo.description);
+            const totalCost = laborCost + partsCost;
+            
+            const quote = {
+                id: Date.now().toString() + '_quote',
+                customer_name: customerInfo.name || 'Customer',
+                customer_phone: customerInfo.phone,
+                vehicle_info: customerInfo.vehicle || 'Vehicle TBD',
+                description: serviceInfo.description,
+                labor_hours: estimatedHours,
+                labor_rate: laborRate,
+                parts_cost: partsCost,
+                total_cost: totalCost,
+                status: 'draft',
+                created_at: new Date().toISOString(),
+                expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+                ai_generated: true,
+                source: 'sms_conversation'
+            };
+            
+            this.quotes.push(quote);
+            console.log('✅ Quote generated and stored:', quote);
+            
+            return quote;
+        } catch (error) {
+            console.error('❌ Error generating quote:', error);
+            return null;
+        }
+    }
+
+    /**
+     * NEW: Extract service information from conversation
+     */
+    extractServiceInfoFromConversation(conversationHistory, currentMessage) {
+        const allText = [
+            ...conversationHistory.slice(-10).map(msg => msg.body),
+            currentMessage
+        ].join(' ').toLowerCase();
+        
+        // Service detection patterns
+        const services = {
+            'oil change': ['oil change', 'oil service', 'change oil'],
+            'brake service': ['brake', 'brakes', 'brake pad', 'brake service'],
+            'tire service': ['tire', 'tires', 'tire rotation', 'tire replacement'],
+            'battery replacement': ['battery', 'dead battery', 'battery replacement'],
+            'transmission service': ['transmission', 'trans service', 'gear'],
+            'engine repair': ['engine', 'motor', 'engine repair'],
+            'diagnostic': ['diagnostic', 'check engine', 'diagnosis', 'scan'],
+            'tune up': ['tune up', 'tuneup', 'maintenance'],
+            'inspection': ['inspection', 'safety', 'emissions']
+        };
+        
+        let detectedService = 'General Service';
+        for (const [service, keywords] of Object.entries(services)) {
+            if (keywords.some(keyword => allText.includes(keyword))) {
+                detectedService = service;
+                break;
+            }
+        }
+        
+        return {
+            description: detectedService,
+            category: this.getServiceCategory(detectedService)
+        };
+    }
+
+    /**
+     * NEW: Estimate labor hours for different services
+     */
+    estimateLaborHours(serviceDescription) {
+        const service = serviceDescription.toLowerCase();
+        
+        const laborEstimates = {
+            'oil change': 0.5,
+            'brake service': 1.5,
+            'tire service': 1,
+            'battery replacement': 0.5,
+            'transmission service': 4,
+            'engine repair': 6,
+            'diagnostic': 1,
+            'tune up': 2,
+            'inspection': 1
+        };
+        
+        for (const [serviceType, hours] of Object.entries(laborEstimates)) {
+            if (service.includes(serviceType.replace(' ', ''))) {
+                return hours;
+            }
+        }
+        
+        return 1; // Default 1 hour
+    }
+
+    /**
+     * NEW: Estimate parts cost for different services
+     */
+    estimatePartsCost(serviceDescription) {
+        const service = serviceDescription.toLowerCase();
+        
+        const partsEstimates = {
+            'oil change': 45,
+            'brake service': 120,
+            'tire service': 200,
+            'battery replacement': 150,
+            'transmission service': 300,
+            'engine repair': 500,
+            'diagnostic': 0,
+            'tune up': 80,
+            'inspection': 0
+        };
+        
+        for (const [serviceType, cost] of Object.entries(partsEstimates)) {
+            if (service.includes(serviceType.replace(' ', ''))) {
+                return cost;
+            }
+        }
+        
+        return 50; // Default parts cost
+    }
+
+    /**
+     * NEW: Get service category for organization
+     */
+    getServiceCategory(serviceDescription) {
+        const service = serviceDescription.toLowerCase();
+        
+        if (service.includes('oil') || service.includes('tune') || service.includes('inspection')) {
+            return 'Maintenance';
+        }
+        if (service.includes('brake') || service.includes('tire') || service.includes('battery')) {
+            return 'Repair';
+        }
+        if (service.includes('engine') || service.includes('transmission')) {
+            return 'Major Repair';
+        }
+        if (service.includes('diagnostic')) {
+            return 'Diagnostic';
+        }
+        
+        return 'General';
     }
 
     /**
@@ -407,7 +610,7 @@ export class MessageProcessor {
             }
         });
         
-        return { name, vehicle, service };
+        return { name, vehicle, service, phone: phoneNumber };
     }
 
     /**
@@ -640,6 +843,7 @@ export class MessageProcessor {
     }
 
     getQuotes() {
+        console.log(`📊 Returning ${this.quotes.length} quotes`);
         return this.quotes;
     }
 
