@@ -55,7 +55,15 @@ export const useCalendar = () => {
     try {
       const saved = localStorage.getItem('appointments')
       if (saved) {
-        setAppointments(JSON.parse(saved))
+        const parsedAppointments = JSON.parse(saved)
+        setAppointments(parsedAppointments)
+        console.log(`📅 Loaded ${parsedAppointments.length} appointments from storage`)
+      } else {
+        // Create some sample appointments for demo
+        const sampleAppointments = createSampleAppointments()
+        setAppointments(sampleAppointments)
+        localStorage.setItem('appointments', JSON.stringify(sampleAppointments))
+        console.log('📅 Created sample appointments for demo')
       }
     } catch (error) {
       console.error('Error loading appointments:', error)
@@ -66,12 +74,67 @@ export const useCalendar = () => {
   }
 
   /**
+   * Creates sample appointments for demo purposes
+   */
+  const createSampleAppointments = (): Appointment[] => {
+    const today = new Date()
+    const tomorrow = new Date(today)
+    tomorrow.setDate(today.getDate() + 1)
+    
+    const nextWeek = new Date(today)
+    nextWeek.setDate(today.getDate() + 7)
+
+    return [
+      {
+        id: 'demo_1',
+        customer_name: 'John Smith',
+        customer_phone: '+1234567890',
+        vehicle_info: '2020 Honda Civic',
+        service_type: 'Oil Change',
+        date: today.toISOString().split('T')[0],
+        time: '10:00',
+        duration: 1,
+        status: 'scheduled',
+        notes: 'Regular maintenance',
+        created_at: new Date().toISOString()
+      },
+      {
+        id: 'demo_2',
+        customer_name: 'Sarah Johnson',
+        customer_phone: '+1987654321',
+        vehicle_info: '2018 Toyota Camry',
+        service_type: 'Brake Inspection',
+        date: tomorrow.toISOString().split('T')[0],
+        time: '14:00',
+        duration: 2,
+        status: 'confirmed',
+        notes: 'Customer reported squeaking noise',
+        created_at: new Date().toISOString()
+      },
+      {
+        id: 'demo_3',
+        customer_name: 'Mike Wilson',
+        customer_phone: '+1555123456',
+        vehicle_info: '2019 Ford F-150',
+        service_type: 'Transmission Service',
+        date: nextWeek.toISOString().split('T')[0],
+        time: '09:00',
+        duration: 4,
+        status: 'scheduled',
+        notes: 'Scheduled maintenance',
+        created_at: new Date().toISOString()
+      }
+    ]
+  }
+
+  /**
    * Saves appointments to localStorage
    */
   const saveAppointments = (newAppointments: Appointment[]) => {
     try {
       localStorage.setItem('appointments', JSON.stringify(newAppointments))
       setAppointments(newAppointments)
+      console.log(`📅 Saved ${newAppointments.length} appointments`)
     } catch (error) {
       console.error('Error saving appointments:', error)
       toast.error('Failed to save appointment')
@@ -254,6 +317,23 @@ export const useCalendar = () => {
     return appointmentData
   }
 
+  /**
+   * Checks for scheduling conflicts
+   */
+  const checkForConflicts = (date: string, time: string, duration: number = 1): boolean => {
+    const proposedStart = new Date(`${date}T${time}:00`)
+    const proposedEnd = new Date(proposedStart.getTime() + duration * 60 * 60 * 1000)
+
+    return appointments.some(apt => {
+      if (apt.status === 'cancelled' || apt.date !== date) return false
+      
+      const aptStart = new Date(`${apt.date}T${apt.time}:00`)
+      const aptEnd = new Date(aptStart.getTime() + apt.duration * 60 * 60 * 1000)
+      
+      return (proposedStart < aptEnd && proposedEnd > aptStart)
+    })
+  }
+
   return {
     appointments,
     isLoading,
@@ -268,6 +348,7 @@ export const useCalendar = () => {
     getCalendarStats,
     generateBookingLink,
     bookFromQuote,
+    checkForConflicts,
     refreshAppointments: loadAppointments
   }
 }
