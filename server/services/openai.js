@@ -17,7 +17,7 @@ export class OpenAIService {
             // Analyze what customer information we already have
             const customerInfo = this.extractCustomerInfo(conversationHistory, messageBody);
             
-            // Build conversation context for AI
+            // Build conversation context for AI - INCREASED HISTORY LENGTH
             const messages = [
                 {
                     role: 'system',
@@ -30,6 +30,14 @@ You must systematically gather customer information in this order:
 3. If new customer, get their address ("What's your address for our records?")
 4. Vehicle details (year, make, model, mileage if relevant)
 5. Contact preferences and any special notes
+
+APPOINTMENT BOOKING:
+When customers want to schedule service:
+- Suggest specific days and times (Monday-Friday, 8am-5pm)
+- Confirm their preferred date and time
+- Get all required info: name, phone, vehicle, service needed
+- Use this EXACT format when booking is confirmed:
+  "BOOKING_CONFIRMED: [Customer Name] | [Phone] | [Vehicle] | [Service] | [Date] | [Time]"
 
 CUSTOMER INFO STATUS:
 ${this.formatCustomerInfoStatus(customerInfo)}
@@ -51,12 +59,15 @@ CustomerData: [JSON object with any new customer data collected]`
                 }
             ];
 
-            // Add conversation history for context
+            // Add conversation history for context - INCREASED FROM 10 TO 30 MESSAGES
             if (conversationHistory && conversationHistory.length > 0) {
+                // Take the last 30 messages instead of 10 for better context
+                const recentHistory = conversationHistory.slice(-30);
+                
                 messages.push({
                     role: 'user',
-                    content: `CONVERSATION HISTORY (most recent last):
-${conversationHistory.map(msg => 
+                    content: `CONVERSATION HISTORY (last ${recentHistory.length} messages, most recent last):
+${recentHistory.map(msg => 
     `${msg.direction === 'inbound' ? 'CUSTOMER' : 'YOU'}: "${msg.body}"`
 ).join('\n')}
 
@@ -65,7 +76,8 @@ CURRENT MESSAGE FROM CUSTOMER: "${messageBody}"
 Based on this conversation and the customer information status above, provide a contextual response that:
 1. Addresses their current message appropriately
 2. Naturally collects any missing customer information
-3. Moves the conversation forward toward booking/service`
+3. Moves the conversation forward toward booking/service
+4. If they want to book an appointment, suggest specific times and confirm details`
                 });
             } else {
                 // New conversation - start with greeting and name collection
@@ -80,7 +92,7 @@ This is a new conversation. Provide a professional response that:
                 });
             }
 
-            console.log(`🧠 Sending ${conversationHistory.length} messages of context to AI`);
+            console.log(`🧠 Sending ${conversationHistory.length} messages of context to AI (using last 30)`);
 
             const response = await axios.post(OPENAI_API_URL, {
                 model: 'gpt-4o',
@@ -143,9 +155,9 @@ This is a new conversation. Provide a professional response that:
             hasContactInfo: false
         };
 
-        // Combine all messages to analyze
+        // Combine all messages to analyze - INCREASED ANALYSIS SCOPE
         const allMessages = [
-            ...conversationHistory.map(msg => msg.body),
+            ...conversationHistory.slice(-30).map(msg => msg.body), // Analyze last 30 messages
             currentMessage
         ].join(' ').toLowerCase();
 
@@ -278,7 +290,7 @@ This is a new conversation. Provide a professional response that:
     }
 
     getIntelligentFallback(messageBody, conversationHistory = []) {
-        // Enhanced fallback logic with customer data collection
+        // Enhanced fallback logic with customer data collection and booking
         const lowerMessage = messageBody.toLowerCase();
         const customerInfo = this.extractCustomerInfo(conversationHistory, messageBody);
 
@@ -338,6 +350,48 @@ This is a new conversation. Provide a professional response that:
                     customerData: customerInfo
                 };
             }
+        }
+
+        // Check for booking/appointment requests
+        if (lowerMessage.includes('appointment') ||
+            lowerMessage.includes('schedule') ||
+            lowerMessage.includes('book') ||
+            lowerMessage.includes('available') ||
+            lowerMessage.includes('when can') ||
+            lowerMessage.includes('thursday') ||
+            lowerMessage.includes('monday') ||
+            lowerMessage.includes('tuesday') ||
+            lowerMessage.includes('wednesday') ||
+            lowerMessage.includes('friday')) {
+            
+            if (!customerInfo.fullName) {
+                return {
+                    reply: "I'd be happy to schedule an appointment for you! We're open Monday-Friday, 8am-5pm. Can I get your name first?",
+                    intent: "Booking Request + Data Collection",
+                    action: "Collect customer name for appointment",
+                    customerData: {}
+                };
+            }
+            
+            // Check if they mentioned a specific day/time
+            const timeMatch = lowerMessage.match(/(monday|tuesday|wednesday|thursday|friday).*?(\d{1,2}(?:am|pm|:\d{2}(?:am|pm)?)?)/i);
+            if (timeMatch) {
+                const day = timeMatch[1];
+                const time = timeMatch[2];
+                return {
+                    reply: `Perfect ${customerInfo.firstName}! I can schedule you for ${day} at ${time}. What vehicle will you be bringing in and what service do you need?`,
+                    intent: "Booking Confirmation",
+                    action: `BOOKING_CONFIRMED: ${customerInfo.fullName} | ${customerInfo.phoneNumber || 'Phone needed'} | ${customerInfo.vehicle.details || 'Vehicle needed'} | Service needed | ${day} | ${time}`,
+                    customerData: customerInfo
+                };
+            }
+            
+            return {
+                reply: `Thanks for wanting to schedule service, ${customerInfo.firstName}! We're open Monday-Friday, 8am-5pm. What day works best for you?`,
+                intent: "Booking Request",
+                action: "Collect preferred appointment time",
+                customerData: customerInfo
+            };
         }
 
         // Check for emergency keywords
@@ -426,30 +480,6 @@ This is a new conversation. Provide a professional response that:
                 reply: `Hi ${customerInfo.firstName}! I received your message about the issue with your vehicle. I'll take a look at what you've described and get back to you with next steps. My diagnostic rate is $80/hr. Thanks for reaching out!`,
                 intent: "Repair Request",
                 action: "Diagnose issue and provide solution",
-                customerData: customerInfo
-            };
-        }
-
-        // Booking/appointment requests
-        if (lowerMessage.includes('appointment') ||
-            lowerMessage.includes('schedule') ||
-            lowerMessage.includes('book') ||
-            lowerMessage.includes('available') ||
-            lowerMessage.includes('when can')) {
-            
-            if (!customerInfo.fullName) {
-                return {
-                    reply: "Thanks for wanting to schedule service! I'll check my availability and get back to you with some time options. My rate is $80/hr with a 1-hour minimum. Can I get your name for the appointment?",
-                    intent: "Booking Request + Data Collection",
-                    action: "Collect customer name for appointment",
-                    customerData: {}
-                };
-            }
-            
-            return {
-                reply: `Thanks for wanting to schedule service, ${customerInfo.firstName}! I'll check my availability and get back to you with some time options. My rate is $80/hr with a 1-hour minimum. Looking forward to helping you!`,
-                intent: "Booking Request",
-                action: "Check schedule and offer appointment times",
                 customerData: customerInfo
             };
         }
