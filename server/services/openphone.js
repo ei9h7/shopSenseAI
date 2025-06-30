@@ -68,8 +68,7 @@ export class OpenPhoneService {
     
     /**
      * Gets messages using the correct OpenPhone API format with required parameters
-     * Based on the API errors, we need to provide BOTH phoneNumberId AND participants
-     * https://www.openphone.com/docs/mdx/api-reference/messages/list-messages
+     * Fixed: Properly handle participants as an array parameter, not JSON string
      */
     async getMessages(phoneNumber = null, limit = 50) {
         try {
@@ -78,49 +77,53 @@ export class OpenPhoneService {
             console.log(`   Limit: ${limit}`);
             console.log(`   PhoneNumberId: ${this.phoneNumberId || 'Not available'}`);
             
-            // Build query parameters according to OpenPhone API docs
-            const params = new URLSearchParams();
-            
-            // Add limit parameter (required, max 100)
-            params.append('limit', Math.min(limit, 100).toString());
+            // Build request parameters - CRITICAL FIX: Use proper array handling
+            const requestParams = {
+                limit: Math.min(limit, 100)
+            };
             
             // According to the error, we need BOTH phoneNumberId AND participants
             if (this.phoneNumberId) {
                 // Add phoneNumberId
-                params.append('phoneNumberId', this.phoneNumberId);
+                requestParams.phoneNumberId = this.phoneNumberId;
                 console.log(`🎯 Using phoneNumberId: ${this.phoneNumberId}`);
                 
-                // Also add participants as required by the API
+                // CRITICAL FIX: Add participants as actual array, not JSON string
                 if (phoneNumber) {
                     // Participants array with the specific customer
-                    params.append('participants', JSON.stringify([phoneNumber]));
-                    console.log(`🎯 Using participants: [${phoneNumber}]`);
+                    requestParams.participants = [phoneNumber];
+                    console.log(`🎯 Using participants array: [${phoneNumber}]`);
                 } else {
                     // Participants array with our phone number to get all conversations for this phoneNumberId
-                    params.append('participants', JSON.stringify([this.phoneNumber]));
-                    console.log(`🎯 Using participants: [${this.phoneNumber}]`);
+                    requestParams.participants = [this.phoneNumber];
+                    console.log(`🎯 Using participants array: [${this.phoneNumber}]`);
                 }
             } else {
                 // Fallback: Use participants only (when we don't have phoneNumberId)
                 if (phoneNumber) {
-                    params.append('participants', JSON.stringify([phoneNumber, this.phoneNumber]));
-                    console.log(`🎯 Fallback - Using participants: [${phoneNumber}, ${this.phoneNumber}]`);
+                    requestParams.participants = [phoneNumber, this.phoneNumber];
+                    console.log(`🎯 Fallback - Using participants array: [${phoneNumber}, ${this.phoneNumber}]`);
                 } else {
-                    params.append('participants', JSON.stringify([this.phoneNumber]));
-                    console.log(`🎯 Fallback - Using participants: [${this.phoneNumber}]`);
+                    requestParams.participants = [this.phoneNumber];
+                    console.log(`🎯 Fallback - Using participants array: [${this.phoneNumber}]`);
                 }
             }
             
-            const url = `${OPENPHONE_API_URL}/messages?${params.toString()}`;
-            console.log(`📡 Requesting: ${url}`);
+            console.log(`📋 Request parameters:`, requestParams);
             
-            const response = await axios.get(url, {
+            // Use axios params option to properly encode array parameters
+            const response = await axios.get(`${OPENPHONE_API_URL}/messages`, {
+                params: requestParams,
                 headers: {
                     'Authorization': this.apiKey,
                     'Accept': 'application/json',
                     'Content-Type': 'application/json'
                 },
-                timeout: 15000
+                timeout: 15000,
+                // CRITICAL: Configure axios to properly handle array parameters
+                paramsSerializer: {
+                    indexes: null // This ensures arrays are serialized as participants[]=value1&participants[]=value2
+                }
             });
             
             console.log(`✅ OpenPhone Messages API Response: ${response.status}`);
@@ -204,9 +207,10 @@ export class OpenPhoneService {
                     console.error('❌ Bad Request - Parameter issues:');
                     console.error('   - Both phoneNumberId AND participants are required');
                     console.error('   - phoneNumberId format should be: PN...');
-                    console.error('   - participants should be JSON array of phone numbers');
+                    console.error('   - participants should be array of phone numbers (not JSON string)');
                     console.error(`   - Current phoneNumberId: ${this.phoneNumberId || 'Not set'}`);
                     console.error(`   - Current participants: ${phoneNumber ? `[${phoneNumber}]` : `[${this.phoneNumber}]`}`);
+                    console.error('   - FIXED: Now using proper array serialization instead of JSON.stringify');
                 }
                 
                 if (error.response.status === 401) {
@@ -236,7 +240,7 @@ export class OpenPhoneService {
     
     /**
      * Gets conversation history for a specific phone number
-     * Uses the corrected API format with required parameters
+     * Uses the corrected API format with proper array parameter handling
      */
     async getConversationHistory(phoneNumber, limit = 20) {
         try {
