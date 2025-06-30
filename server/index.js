@@ -12,7 +12,14 @@ const PORT = process.env.PORT || 10000;
 // Middleware with size limits for Render
 app.use(cors({
     origin: process.env.NODE_ENV === 'production'
-        ? ['https://clinquant-starship-25fe89.netlify.app']
+        ? [
+            'https://clinquant-starship-25fe89.netlify.app',
+            // Add your custom StackBlitz domain here when you get it
+            'https://your-custom-domain.stackblitz.app',
+            // Allow any StackBlitz domain for hackathon
+            /^https:\/\/.*\.stackblitz\.app$/,
+            /^https:\/\/.*\.bolt\.new$/
+          ]
         : ['http://localhost:5173'],
     credentials: true
 }));
