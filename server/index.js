@@ -14,6 +14,7 @@ app.use(cors({
     origin: process.env.NODE_ENV === 'production'
         ? [
             'https://shopsenseai.app',
+            'https://shopsenseai.netlify.app',
             'https://clinquant-starship-25fe89.netlify.app',
             // Add your custom StackBlitz domain here when you get it
             'https://your-custom-domain.stackblitz.app',
@@ -24,6 +25,7 @@ app.use(cors({
         : [
             // Remove localhost entirely - always use production backend
             'https://shopsenseai.app',
+            'https://shopsenseai.netlify.app',
             'https://clinquant-starship-25fe89.netlify.app'
           ],
     credentials: true
@@ -335,6 +337,7 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
     console.log(`✅ ShopSenseAI webhook server deployed successfully!`);
     console.log(`🎯 Tagline: Instant quotes. Automated booking. More wrench time.`);
     console.log(`🚫 Localhost disabled - always using production backend`);
+    console.log(`🌐 Allowed origins: shopsenseai.app, shopsenseai.netlify.app`);
     
     // Initialize messageProcessor on startup
     try {
