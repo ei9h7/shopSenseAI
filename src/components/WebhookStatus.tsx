@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import { Globe, Copy, CheckCircle, AlertCircle, ExternalLink } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { API_BASE_URL } from '../utils/api'
 
 const WebhookStatus: React.FC = () => {
-  const [webhookUrl] = useState('https://torquegpt.onrender.com/api/webhooks/openphone')
+  const [webhookUrl] = useState(`${API_BASE_URL}/api/webhooks/openphone`)
   const [isServerRunning, setIsServerRunning] = useState(false)
   const [isChecking, setIsChecking] = useState(true)
 
@@ -15,7 +16,7 @@ const WebhookStatus: React.FC = () => {
   const checkServerStatus = async () => {
     setIsChecking(true)
     try {
-      const healthUrl = 'https://torquegpt.onrender.com/health'
+      const healthUrl = `${API_BASE_URL}/health`
       const response = await fetch(healthUrl)
       setIsServerRunning(response.ok)
     } catch {
@@ -115,7 +116,10 @@ const WebhookStatus: React.FC = () => {
           <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
             <p className="text-sm text-yellow-800">
               <strong>Note:</strong> The webhook server appears to be offline. 
-              The production server at https://torquegpt.onrender.com may be starting up or experiencing issues.
+              {API_BASE_URL.includes('localhost') 
+                ? ' Make sure to start the backend server by running "npm run dev" in the server directory.'
+                : ' The production server may be starting up or experiencing issues.'
+              }
             </p>
           </div>
         )}

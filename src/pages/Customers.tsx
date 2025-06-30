@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Users, Phone, Car, MapPin, Calendar, Eye, Plus, Search, Filter } from 'lucide-react'
+import { API_BASE_URL } from '../utils/api'
 
 interface Vehicle {
   year?: string
@@ -57,11 +58,11 @@ const Customers: React.FC = () => {
   }, [])
 
   /**
-   * Loads customers from the production API
+   * Loads customers from the API
    */
   const loadCustomers = async () => {
     try {
-      const response = await fetch('https://torquegpt.onrender.com/api/customers')
+      const response = await fetch(`${API_BASE_URL}/api/customers`)
       if (response.ok) {
         const data = await response.json()
         setCustomers(data.customers || [])

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { Message } from '../types'
 import toast from 'react-hot-toast'
+import { API_BASE_URL } from '../utils/api'
 
 /**
  * useMessages Hook
@@ -8,18 +9,16 @@ import toast from 'react-hot-toast'
  * A comprehensive React hook for managing customer messages and SMS communication.
  * This hook provides real-time message management with the following capabilities:
  * 
- * - Automatic message polling from the production API
+ * - Automatic message polling from the API
  * - SMS sending via OpenPhone integration
  * - Message status tracking (read/unread)
  * - Emergency message detection and filtering
  * - Real-time updates with 5-second polling interval
  * 
- * The hook connects directly to the production webhook server at torquegpt.onrender.com
- * and provides a seamless interface for message management in the frontend.
+ * The hook connects to the appropriate server based on environment:
+ * - Development: localhost:10000
+ * - Production: torquegpt.onrender.com
  */
-
-// Production API base URL - always use production server
-const API_BASE_URL = 'https://torquegpt.onrender.com'
 
 export const useMessages = () => {
   const [messages, setMessages] = useState<Message[]>([])
@@ -37,10 +36,10 @@ export const useMessages = () => {
   }, [])
 
   /**
-   * Loads messages from the production API
+   * Loads messages from the API
    * 
-   * This function fetches messages from the server. If the server is unavailable,
-   * messages will be set to an empty array.
+   * This function fetches messages from the server using the dynamic API URL
+   * that automatically selects between development and production endpoints.
    */
   const loadMessages = async () => {
     try {
@@ -49,6 +48,7 @@ export const useMessages = () => {
         const data = await response.json()
         setMessages(data.messages || [])
       } else {
+        console.error('Failed to load messages from server:', response.status)
         setMessages([])
       }
     } catch (error) {
@@ -84,7 +84,7 @@ export const useMessages = () => {
         await loadMessages()
         toast.success('Message sent successfully')
       } else {
-        throw new Error('Server unavailable - unable to send message')
+        throw new Error(`Server responded with status: ${response.status}`)
       }
     } catch (error) {
       console.error('Error sending message:', error)
@@ -105,19 +105,18 @@ export const useMessages = () => {
    */
   const markAsRead = async (messageId: string) => {
     try {
-      // Try to mark as read on server
       await fetch(`${API_BASE_URL}/api/messages/${messageId}/read`, {
         method: 'POST',
       })
+      
+      // Update local state
+      const updatedMessages = messages.map(msg => 
+        msg.id === messageId ? { ...msg, read: true } : msg
+      )
+      setMessages(updatedMessages)
     } catch (error) {
-      console.error('Error marking message as read on server:', error)
+      console.error('Error marking message as read:', error)
     }
-
-    // Update local state regardless of server response
-    const updatedMessages = messages.map(msg => 
-      msg.id === messageId ? { ...msg, read: true } : msg
-    )
-    setMessages(updatedMessages)
   }
 
   /**

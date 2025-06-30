@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { BusinessSettings, ServerSettings } from '../types'
 import toast from 'react-hot-toast'
+import { API_BASE_URL } from '../utils/api'
 
 /**
  * useBusinessSettings Hook
@@ -21,9 +22,6 @@ import toast from 'react-hot-toast'
  * (via environment variables) and displays them as read-only with masked values.
  * This prevents users from having to re-enter API keys after deployments.
  */
-
-// Production API base URL - always use production server
-const API_BASE_URL = 'https://torquegpt.onrender.com'
 
 // Default settings with DND enabled by default (as per recent changes)
 const defaultSettings: BusinessSettings = {
