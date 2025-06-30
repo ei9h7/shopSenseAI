@@ -9,15 +9,11 @@ export class OpenAIService {
     }
 
     /**
-     * Processes a message with full conversation context and customer data collection
-     * Enhanced to be less aggressive and more natural in conversation
+     * Processes a message with full conversation context and automatic booking detection
      */
     async processMessageWithContext(messageBody, conversationHistory, businessName = 'Pink Chicken Speed Shop') {
         try {
-            // Analyze what customer information we already have
-            const customerInfo = this.extractCustomerInfo(conversationHistory, messageBody);
-            
-            // Build conversation context for AI - INCREASED HISTORY LENGTH
+            // Build conversation context for AI
             const messages = [
                 {
                     role: 'system',
@@ -25,49 +21,44 @@ export class OpenAIService {
 
 CONVERSATION STYLE:
 - Be natural and conversational, not pushy or aggressive
-- Don't ask for information one thing at a time like a form
 - Take whatever information the customer gives you naturally
-- Don't push for address unless absolutely necessary for service
 - Focus on helping them with their actual need first
 - Collect info organically during natural conversation
 
-CUSTOMER DATA COLLECTION (when natural):
-If you need customer info, ask for what's most relevant:
-1. Name (only if needed for booking/service)
-2. Vehicle details (year, make, model - only what they provide)
-3. Contact info (only if booking an appointment)
-4. Service needed (focus on this first)
-
 APPOINTMENT BOOKING:
-When customers want to schedule service:
+When customers want to schedule service or confirm appointments:
 - Suggest specific days and times (Monday-Friday, 8am-5pm)
 - Confirm their preferred date and time
 - Get essential info: name, vehicle, service needed
 - Use this EXACT format when booking is confirmed:
   "BOOKING_CONFIRMED: [Customer Name] | [Phone] | [Vehicle] | [Service] | [Date] | [Time]"
 
-CUSTOMER INFO STATUS:
-${this.formatCustomerInfoStatus(customerInfo)}
+QUOTE ACCEPTANCE:
+When customers accept quotes or say "yes" to pricing:
+- Confirm the acceptance
+- Use format: "QUOTE_ACCEPTED: [Service] | [Price] | [Vehicle]"
+
+EMERGENCY DETECTION:
+If message contains urgent keywords (emergency, urgent, breakdown, stranded, accident):
+- Respond immediately with emergency protocol
+- Use format: "EMERGENCY: [Brief description]"
 
 CONVERSATION RULES:
 - Use the conversation history to provide contextual responses
 - If customer says "yes" or agrees, refer to what they're agreeing to based on context
 - Be helpful and focus on their actual automotive needs
-- Don't interrogate them - have a natural conversation
 - Your labor rate is $80/hr with a 1-hour minimum ($20 per 15 min extra)
 
 RESPONSE FORMAT:
 Reply: [The natural, helpful message that addresses their need]
 Intent: [e.g. Quote Request, Booking Confirmation, Service Inquiry, Emergency]
-Action: [e.g. Provide quote, Schedule appointment, Ask for vehicle details]
-CustomerData: [JSON object with any new customer data collected naturally]`
+Action: [e.g. BOOKING_CONFIRMED: details, Provide quote, Ask for vehicle details]`
                 }
             ];
 
-            // Add conversation history for context - INCREASED FROM 10 TO 30 MESSAGES
+            // Add conversation history for context
             if (conversationHistory && conversationHistory.length > 0) {
-                // Take the last 30 messages instead of 10 for better context
-                const recentHistory = conversationHistory.slice(-30);
+                const recentHistory = conversationHistory.slice(-10);
                 
                 messages.push({
                     role: 'user',
@@ -82,7 +73,9 @@ Based on this conversation, provide a natural, helpful response that:
 1. Addresses their current message appropriately
 2. Focuses on their automotive service needs
 3. Moves the conversation forward naturally
-4. If they want to book an appointment, confirm details and use BOOKING_CONFIRMED format`
+4. If they want to book an appointment, confirm details and use BOOKING_CONFIRMED format
+5. If they're accepting a quote, use QUOTE_ACCEPTED format
+6. If it's an emergency, use EMERGENCY format`
                 });
             } else {
                 // New conversation - start naturally
@@ -93,11 +86,13 @@ Based on this conversation, provide a natural, helpful response that:
 This is a new conversation. Provide a professional, natural response that:
 1. Addresses their automotive inquiry helpfully
 2. Focuses on their service needs first
-3. Only asks for essential info if needed for their specific request`
+3. Only asks for essential info if needed for their specific request
+4. If they want to book, use BOOKING_CONFIRMED format
+5. If emergency, use EMERGENCY format`
                 });
             }
 
-            console.log(`🧠 Sending ${conversationHistory.length} messages of context to AI (using last 30)`);
+            console.log(`🧠 Sending ${conversationHistory.length} messages of context to AI`);
 
             const response = await axios.post(OPENAI_API_URL, {
                 model: 'gpt-4o',
@@ -141,139 +136,6 @@ This is a new conversation. Provide a professional, natural response that:
     }
 
     /**
-     * Extracts customer information from conversation history and current message
-     */
-    extractCustomerInfo(conversationHistory, currentMessage) {
-        const info = {
-            firstName: null,
-            lastName: null,
-            fullName: null,
-            isRepeatCustomer: null,
-            address: null,
-            vehicle: {
-                year: null,
-                make: null,
-                model: null,
-                details: null
-            },
-            serviceNeeded: null,
-            hasContactInfo: false
-        };
-
-        // Combine all messages to analyze - INCREASED ANALYSIS SCOPE
-        const allMessages = [
-            ...conversationHistory.slice(-30).map(msg => msg.body), // Analyze last 30 messages
-            currentMessage
-        ].join(' ').toLowerCase();
-
-        // Extract vehicle information
-        const vehiclePatterns = [
-            /(\d{4})\s+(ford|chevy|chevrolet|dodge|toyota|honda|nissan|bmw|mercedes|audi|volkswagen|vw|subaru|mazda|hyundai|kia|jeep|ram|gmc|cadillac|buick|lincoln|acura|infiniti|lexus|volvo|porsche|ferrari|lamborghini|maserati|bentley|rolls.royce)\s+(\w+)/gi,
-            /(ford|chevy|chevrolet|dodge|toyota|honda|nissan|bmw|mercedes|audi|volkswagen|vw|subaru|mazda|hyundai|kia|jeep|ram|gmc|cadillac|buick|lincoln|acura|infiniti|lexus|volvo|porsche|ferrari|lamborghini|maserati|bentley|rolls.royce)\s+(\w+)/gi
-        ];
-
-        vehiclePatterns.forEach(pattern => {
-            const matches = allMessages.match(pattern);
-            if (matches) {
-                const match = matches[0];
-                const parts = match.split(' ');
-                if (parts.length >= 3 && /^\d{4}$/.test(parts[0])) {
-                    info.vehicle.year = parts[0];
-                    info.vehicle.make = parts[1];
-                    info.vehicle.model = parts[2];
-                } else if (parts.length >= 2) {
-                    info.vehicle.make = parts[0];
-                    info.vehicle.model = parts[1];
-                }
-                info.vehicle.details = match;
-            }
-        });
-
-        // Extract service information
-        const serviceKeywords = [
-            'oil change', 'brake', 'tire', 'transmission', 'engine', 'battery',
-            'alternator', 'starter', 'radiator', 'coolant', 'tune up', 'inspection',
-            'diagnostic', 'repair', 'maintenance', 'service', 'check', 'replace',
-            'tie rod', 'ball joint', 'strut', 'shock', 'muffler', 'exhaust',
-            'timing belt', 'water pump', 'fuel pump', 'spark plug', 'air filter'
-        ];
-
-        serviceKeywords.forEach(keyword => {
-            if (allMessages.includes(keyword)) {
-                info.serviceNeeded = keyword;
-            }
-        });
-
-        // Check for name patterns
-        const namePatterns = [
-            /my name is (\w+)(?:\s+(\w+))?/gi,
-            /i'm (\w+)(?:\s+(\w+))?/gi,
-            /this is (\w+)(?:\s+(\w+))?/gi,
-            /call me (\w+)/gi
-        ];
-
-        namePatterns.forEach(pattern => {
-            const match = allMessages.match(pattern);
-            if (match) {
-                const parts = match[0].split(' ');
-                if (parts.length >= 3) {
-                    info.firstName = parts[parts.length - 2];
-                    info.lastName = parts[parts.length - 1];
-                    info.fullName = `${info.firstName} ${info.lastName}`;
-                } else {
-                    info.firstName = parts[parts.length - 1];
-                    info.fullName = info.firstName;
-                }
-            }
-        });
-
-        // Check for repeat customer indicators
-        const repeatIndicators = ['been here before', 'returning customer', 'came here before', 'previous customer'];
-        const newIndicators = ['first time', 'never been', 'new customer', 'haven\'t been'];
-        
-        repeatIndicators.forEach(indicator => {
-            if (allMessages.includes(indicator)) {
-                info.isRepeatCustomer = true;
-            }
-        });
-
-        newIndicators.forEach(indicator => {
-            if (allMessages.includes(indicator)) {
-                info.isRepeatCustomer = false;
-            }
-        });
-
-        return info;
-    }
-
-    /**
-     * Formats customer information status for AI context
-     */
-    formatCustomerInfoStatus(info) {
-        const status = [];
-        
-        if (info.fullName) {
-            status.push(`✅ Name: ${info.fullName}`);
-        } else {
-            status.push(`❓ Name: Not provided (ask only if booking appointment)`);
-        }
-
-        if (info.vehicle.details) {
-            status.push(`✅ Vehicle: ${info.vehicle.details}`);
-        } else {
-            status.push(`❓ Vehicle: Not specified (ask only if relevant to service)`);
-        }
-
-        if (info.serviceNeeded) {
-            status.push(`✅ Service: ${info.serviceNeeded}`);
-        } else {
-            status.push(`❓ Service: Not specified (focus on understanding their need)`);
-        }
-
-        return status.join('\n');
-    }
-
-    /**
      * Legacy method for backward compatibility
      */
     async processMessage(messageBody, businessName = 'Pink Chicken Speed Shop') {
@@ -281,9 +143,7 @@ This is a new conversation. Provide a professional, natural response that:
     }
 
     getIntelligentFallback(messageBody, conversationHistory = []) {
-        // Enhanced fallback logic with natural conversation and booking
         const lowerMessage = messageBody.toLowerCase();
-        const customerInfo = this.extractCustomerInfo(conversationHistory, messageBody);
 
         // Check if this is a positive response to a previous message
         if (conversationHistory.length > 0) {
@@ -308,8 +168,7 @@ This is a new conversation. Provide a professional, natural response that:
                     return {
                         reply: `Perfect! I'll get that scheduled for you. Thanks for choosing Pink Chicken Speed Shop!`,
                         intent: "Booking Confirmation",
-                        action: `BOOKING_CONFIRMED: ${customerInfo.fullName || 'Customer'} | ${customerInfo.phoneNumber || 'Phone needed'} | ${customerInfo.vehicle.details || 'Vehicle TBD'} | ${customerInfo.serviceNeeded || 'Service TBD'} | Next available | 10:00`,
-                        customerData: customerInfo
+                        action: `BOOKING_CONFIRMED: Customer | Phone needed | Vehicle TBD | Service TBD | Next available | 10:00`
                     };
                 }
 
@@ -318,18 +177,9 @@ This is a new conversation. Provide a professional, natural response that:
                     return {
                         reply: "Great! I'll prepare that quote for you and get back to you with the details shortly. Thanks for your business!",
                         intent: "Quote Confirmation",
-                        action: "Prepare and send detailed quote",
-                        customerData: customerInfo
+                        action: "QUOTE_ACCEPTED: Service TBD | Price TBD | Vehicle TBD"
                     };
                 }
-
-                // Generic positive response
-                return {
-                    reply: "Excellent! I'll take care of that for you right away. I'll be in touch with the next steps. Thanks for choosing us!",
-                    intent: "Confirmation",
-                    action: "Follow up with confirmed service",
-                    customerData: customerInfo
-                };
             }
         }
 
@@ -353,16 +203,14 @@ This is a new conversation. Provide a professional, natural response that:
                 return {
                     reply: `Perfect! I can schedule you for ${day} at ${time}. I'll confirm the details and see you then!`,
                     intent: "Booking Confirmation",
-                    action: `BOOKING_CONFIRMED: ${customerInfo.fullName || 'Customer'} | Phone needed | ${customerInfo.vehicle.details || 'Vehicle TBD'} | ${customerInfo.serviceNeeded || 'Service TBD'} | ${day} | ${time}`,
-                    customerData: customerInfo
+                    action: `BOOKING_CONFIRMED: Customer | Phone needed | Vehicle TBD | Service TBD | ${day} | ${time}`
                 };
             }
             
             return {
                 reply: `I'd be happy to schedule an appointment for you! We're open Monday-Friday, 8am-5pm. What day and time works best for you?`,
                 intent: "Booking Request",
-                action: "Collect preferred appointment time",
-                customerData: customerInfo
+                action: "Collect preferred appointment time"
             };
         }
 
@@ -377,8 +225,7 @@ This is a new conversation. Provide a professional, natural response that:
             return {
                 reply: "🚨 EMERGENCY RECEIVED! I got your urgent message and will respond immediately. If you're in immediate danger, please call 911. Otherwise, I'll contact you within 15 minutes. Stay safe!",
                 intent: "Emergency",
-                action: "URGENT - Contact customer immediately",
-                customerData: customerInfo
+                action: "EMERGENCY: Customer needs immediate assistance"
             };
         }
 
@@ -392,8 +239,7 @@ This is a new conversation. Provide a professional, natural response that:
             return {
                 reply: `Hi! Thanks for reaching out about service. I'd be happy to help with your vehicle maintenance. My rate is $80/hr with a 1-hour minimum. What vehicle are you bringing in and what service do you need?`,
                 intent: "Service Request",
-                action: "Collect vehicle and service details",
-                customerData: customerInfo
+                action: "Collect vehicle and service details"
             };
         }
 
@@ -407,8 +253,7 @@ This is a new conversation. Provide a professional, natural response that:
             return {
                 reply: `Thanks for your quote request! I'd be happy to provide an estimate. My labor rate is $80/hr with a 1-hour minimum. What vehicle and what service are you looking to get done?`,
                 intent: "Quote Request",
-                action: "Collect vehicle and service details for quote",
-                customerData: customerInfo
+                action: "Collect vehicle and service details for quote"
             };
         }
 
@@ -424,8 +269,7 @@ This is a new conversation. Provide a professional, natural response that:
             return {
                 reply: `I can help you with that issue. My diagnostic rate is $80/hr. Can you tell me what vehicle you have and describe what's happening?`,
                 intent: "Repair Request",
-                action: "Diagnose issue and provide solution",
-                customerData: customerInfo
+                action: "Diagnose issue and provide solution"
             };
         }
 
@@ -433,8 +277,7 @@ This is a new conversation. Provide a professional, natural response that:
         return {
             reply: `Hi! Thanks for your message. I'm Pink Chicken Speed Shop and I'd be happy to help with your automotive needs. My rate is $80/hr. What can I help you with today?`,
             intent: "General Inquiry",
-            action: "Understand customer need",
-            customerData: customerInfo
+            action: "Understand customer need"
         };
     }
 
@@ -453,18 +296,6 @@ This is a new conversation. Provide a professional, natural response that:
         const actionLine = lines.find(line => line.toLowerCase().startsWith('action:'));
         const action = actionLine ? actionLine.replace(/^action:\s*/i, '').trim() : 'Reply sent';
 
-        // Extract CustomerData line (new)
-        const customerDataLine = lines.find(line => line.toLowerCase().startsWith('customerdata:'));
-        let customerData = {};
-        if (customerDataLine) {
-            try {
-                const dataStr = customerDataLine.replace(/^customerdata:\s*/i, '').trim();
-                customerData = JSON.parse(dataStr);
-            } catch (e) {
-                console.warn('Could not parse customer data from AI response');
-            }
-        }
-
-        return { reply, intent, action, customerData };
+        return { reply, intent, action };
     }
 }
