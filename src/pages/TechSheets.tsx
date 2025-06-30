@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { ClipboardList, Plus, Download, Eye, Wrench, Clock, AlertTriangle, X, Bot, FileText, FilePdf } from 'lucide-react'
+import { ClipboardList, Plus, Download, Eye, Wrench, Clock, AlertTriangle, X, Bot, FileText, File as FilePdf } from 'lucide-react'
 import { useTechSheets } from '../hooks/useTechSheets'
 import { useBusinessSettings } from '../hooks/useBusinessSettings'
 import toast from 'react-hot-toast'
