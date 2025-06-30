@@ -22,6 +22,9 @@ import toast from 'react-hot-toast'
  * This prevents users from having to re-enter API keys after deployments.
  */
 
+// Production API base URL - always use production server
+const API_BASE_URL = 'https://torquegpt.onrender.com'
+
 // Default settings with DND enabled by default (as per recent changes)
 const defaultSettings: BusinessSettings = {
   id: '1',
@@ -60,7 +63,7 @@ export const useBusinessSettings = () => {
       // First try to load from server (for persistent API keys)
       try {
         console.log('🔄 Fetching server settings...')
-        const response = await fetch('https://torquegpt.onrender.com/api/settings')
+        const response = await fetch(`${API_BASE_URL}/api/settings`)
         if (response.ok) {
           const serverData = await response.json()
           setServerSettings(serverData)

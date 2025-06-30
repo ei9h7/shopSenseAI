@@ -10,20 +10,16 @@ import toast from 'react-hot-toast'
  * 
  * - Automatic message polling from the production API
  * - SMS sending via OpenPhone integration
- * - Local storage fallback for offline functionality
  * - Message status tracking (read/unread)
  * - Emergency message detection and filtering
  * - Real-time updates with 5-second polling interval
  * 
- * The hook connects to the appropriate backend server based on the environment:
- * - Development: http://localhost:10000
- * - Production: https://torquegpt.onrender.com
+ * The hook connects directly to the production webhook server at torquegpt.onrender.com
+ * and provides a seamless interface for message management in the frontend.
  */
 
-// Dynamic API base URL based on environment
-const API_BASE_URL = import.meta.env.MODE === 'production' 
-  ? 'https://torquegpt.onrender.com' 
-  : 'http://localhost:10000'
+// Production API base URL - always use production server
+const API_BASE_URL = 'https://torquegpt.onrender.com'
 
 export const useMessages = () => {
   const [messages, setMessages] = useState<Message[]>([])
@@ -41,38 +37,23 @@ export const useMessages = () => {
   }, [])
 
   /**
-   * Loads messages from the production API with localStorage fallback
+   * Loads messages from the production API
    * 
-   * This function attempts to fetch messages from the server first,
-   * then falls back to localStorage if the server is unavailable.
-   * This provides offline functionality and ensures the app works
-   * even when the webhook server is temporarily down.
+   * This function fetches messages from the server. If the server is unavailable,
+   * messages will be set to an empty array.
    */
   const loadMessages = async () => {
     try {
-      // Try to load from server first
       const response = await fetch(`${API_BASE_URL}/api/messages`)
       if (response.ok) {
         const data = await response.json()
         setMessages(data.messages || [])
       } else {
-        // Fallback to localStorage if server is unavailable
-        const savedMessages = localStorage.getItem('messages')
-        if (savedMessages) {
-          setMessages(JSON.parse(savedMessages))
-        } else {
-          setMessages([])
-        }
-      }
-    } catch (error) {
-      console.error('Error loading messages from server, using localStorage:', error)
-      // Fallback to localStorage on network errors
-      const savedMessages = localStorage.getItem('messages')
-      if (savedMessages) {
-        setMessages(JSON.parse(savedMessages))
-      } else {
         setMessages([])
       }
+    } catch (error) {
+      console.error('Error loading messages from server:', error)
+      setMessages([])
     } finally {
       setIsLoading(false)
     }
@@ -90,7 +71,6 @@ export const useMessages = () => {
   const sendMessage = async ({ phoneNumber, message }: { phoneNumber: string; message: string }) => {
     setIsSending(true)
     try {
-      // Send via production server
       const response = await fetch(`${API_BASE_URL}/api/messages/reply`, {
         method: 'POST',
         headers: {
@@ -104,22 +84,7 @@ export const useMessages = () => {
         await loadMessages()
         toast.success('Message sent successfully')
       } else {
-        // Fallback: just add to localStorage for offline functionality
-        const newMessage: Message = {
-          id: Date.now().toString(),
-          phone_number: phoneNumber,
-          body: message,
-          direction: 'outbound',
-          timestamp: new Date().toISOString(),
-          processed: true,
-          created_at: new Date().toISOString()
-        }
-
-        const updatedMessages = [newMessage, ...messages]
-        setMessages(updatedMessages)
-        localStorage.setItem('messages', JSON.stringify(updatedMessages))
-        
-        throw new Error('Server unavailable - message saved locally only')
+        throw new Error('Server unavailable - unable to send message')
       }
     } catch (error) {
       console.error('Error sending message:', error)
@@ -133,7 +98,7 @@ export const useMessages = () => {
   /**
    * Marks a message as read
    * 
-   * Updates both the server and local state to track message read status.
+   * Updates the server to track message read status.
    * This helps with conversation management and unread count tracking.
    * 
    * @param messageId - The ID of the message to mark as read
@@ -153,7 +118,6 @@ export const useMessages = () => {
       msg.id === messageId ? { ...msg, read: true } : msg
     )
     setMessages(updatedMessages)
-    localStorage.setItem('messages', JSON.stringify(updatedMessages))
   }
 
   /**
