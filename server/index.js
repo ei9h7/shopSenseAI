@@ -22,8 +22,9 @@ app.use(cors({
             /^https:\/\/.*\.bolt\.new$/
           ]
         : [
-            'http://localhost:5173',
-            'https://localhost:5173'
+            // Remove localhost entirely - always use production backend
+            'https://shopsenseai.app',
+            'https://clinquant-starship-25fe89.netlify.app'
           ],
     credentials: true
 }));
@@ -333,6 +334,7 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
     console.log(`🔧 Tech Sheet API: https://torquegpt.onrender.com/api/generate-tech-sheet`);
     console.log(`✅ ShopSenseAI webhook server deployed successfully!`);
     console.log(`🎯 Tagline: Instant quotes. Automated booking. More wrench time.`);
+    console.log(`🚫 Localhost disabled - always using production backend`);
     
     // Initialize messageProcessor on startup
     try {

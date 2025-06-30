@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useBusinessSettings } from './useBusinessSettings'
 import { generateTechSheetPDF } from '../utils/pdfGenerator'
+import { API_BASE_URL } from '../utils/api'
 import type { Quote } from './useQuotes'
 import toast from 'react-hot-toast'
 
@@ -223,7 +224,7 @@ export const useTechSheets = () => {
       if (apiKey === 'server-configured') {
         // Use server-side API when key is configured on server
         console.log('🔧 Using server-side API for tech sheet generation...')
-        const response = await fetch('https://torquegpt.onrender.com/api/generate-tech-sheet', {
+        const response = await fetch(`${API_BASE_URL}/api/generate-tech-sheet`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
