@@ -95,10 +95,10 @@ const Messages: React.FC = () => {
                 <li>Your message will appear in the conversation list below within 5-10 seconds</li>
                 <li>The AI will automatically respond via SMS (if Do Not Disturb is ON)</li>
                 <li>You can also send manual replies using the reply form in the conversation view</li>
-                <Link to="/settings" className="font-medium underline hover:text-yellow-900">
-              <p className="mt-2 text-xs">
-                </Link>.
-              </p>
+              </ol>
+              <Link to="/settings" className="font-medium underline hover:text-yellow-900">
+                <p className="mt-2 text-xs">Configure settings here</p>
+              </Link>
             </div>
           </div>
         </div>
