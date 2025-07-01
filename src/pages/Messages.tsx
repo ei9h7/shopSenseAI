@@ -1,12 +1,13 @@
 import React, { useEffect } from 'react'
 import { MessageSquare, RefreshCw } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import MessageList from '../components/MessageList'
 import { useMessages } from '../hooks/useMessages'
 import { useBusinessSettings } from '../hooks/useBusinessSettings'
 
 const Messages: React.FC = () => {
   const { refreshMessages, getUnreadCount, getEmergencyMessages } = useMessages()
-  const { settings } = useBusinessSettings()
+  const { settings, serverSettings } = useBusinessSettings()
   
   const unreadCount = getUnreadCount()
   const emergencyMessages = getEmergencyMessages()
@@ -35,7 +36,13 @@ const Messages: React.FC = () => {
     }
   }, [emergencyMessages])
 
-  const hasApiKeys = settings?.openai_api_key && settings?.openphone_api_key
+  // Check if API keys are configured either locally or on server
+  const hasApiKeys = (
+    // Server-side configuration
+    (serverSettings?.openai_configured && serverSettings?.openphone_configured) ||
+    // Local configuration
+    (settings?.openai_api_key && settings?.openphone_api_key)
+  )
 
   return (
     <div className="space-y-6">
@@ -88,9 +95,9 @@ const Messages: React.FC = () => {
                 <li>Your message will appear in the conversation list below within 5-10 seconds</li>
                 <li>The AI will automatically respond via SMS (if Do Not Disturb is ON)</li>
                 <li>You can also send manual replies using the reply form in the conversation view</li>
-              </ol>
+                <Link to="/settings" className="font-medium underline hover:text-yellow-900">
               <p className="mt-2 text-xs">
-                💡 Try messages like "I need an oil change for my 2020 Honda Civic" or "Emergency - my car won't start!"
+                </Link>.
               </p>
             </div>
           </div>
