@@ -69,6 +69,34 @@ const Messages: React.FC = () => {
         </div>
       </div>
 
+      {/* Hackathon Demo Instructions */}
+      <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+        <div className="flex">
+          <div className="flex-shrink-0">
+            <MessageSquare className="h-5 w-5 text-blue-400" />
+          </div>
+          <div className="ml-3">
+            <h3 className="text-sm font-medium text-blue-800">
+              📱 Demo Instructions for Judges
+            </h3>
+            <div className="mt-2 text-sm text-blue-700">
+              <p className="mb-2">
+                <strong>To test the SMS functionality:</strong>
+              </p>
+              <ol className="list-decimal list-inside space-y-1">
+                <li>Send an SMS to <strong className="font-mono bg-blue-100 px-2 py-1 rounded text-blue-900">(587) 328-7465</strong></li>
+                <li>Your message will appear in the conversation list below within 5-10 seconds</li>
+                <li>The AI will automatically respond via SMS (if Do Not Disturb is ON)</li>
+                <li>You can also send manual replies using the reply form in the conversation view</li>
+              </ol>
+              <p className="mt-2 text-xs">
+                💡 Try messages like "I need an oil change for my 2020 Honda Civic" or "Emergency - my car won't start!"
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {!hasApiKeys && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
           <div className="flex">
