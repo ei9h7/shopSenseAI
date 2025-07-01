@@ -9,19 +9,41 @@ import { OpenAIService } from './services/openai.js';
 const app = express();
 const PORT = process.env.PORT || 10000;
 
+
 // Middleware with size limits for Render
 app.use(cors({
-    origin: process.env.NODE_ENV === 'production'
-        ? [
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        
+        const allowedOrigins = [
             'https://shopsenseai.app',
             'https://shopsenseai.netlify.app',
-            'https://clinquant-starship-25fe89.netlify.app'
-          ]
-        : [
-            'https://shopsenseai.app',
-            'https://shopsenseai.netlify.app',
-            'https://clinquant-starship-25fe89.netlify.app'
-          ],
+            'https://clinquant-starship-25fe89.netlify.app',
+            'http://localhost:5173',
+            'http://localhost:3000',
+            'http://localhost:4173'
+        ];
+        
+        // Check exact matches first
+        if (allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+        
+        // Check webcontainer patterns
+        const webcontainerPatterns = [
+            /^https:\/\/.*\.webcontainer\.io$/,
+            /^https:\/\/.*\.webcontainer-api\.io$/
+        ];
+        
+        for (const pattern of webcontainerPatterns) {
+            if (pattern.test(origin)) {
+                return callback(null, true);
+            }
+        }
+        
+        // Reject all other origins
+        console.log(`🚫 CORS blocked origin: ${origin}`);
     credentials: true
 }));
 app.use(express.json({ limit: '1mb' }));
