@@ -9,7 +9,6 @@ import { OpenAIService } from './services/openai.js';
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-
 // Middleware with size limits for Render
 app.use(cors({
     origin: function (origin, callback) {
@@ -44,8 +43,11 @@ app.use(cors({
         
         // Reject all other origins
         console.log(`🚫 CORS blocked origin: ${origin}`);
+        callback(new Error('Not allowed by CORS'));
+    },
     credentials: true
-});
+}));
+
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
