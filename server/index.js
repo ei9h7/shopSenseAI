@@ -5,7 +5,8 @@ import cors from 'cors';
 import { handleOpenPhoneWebhook } from './webhooks/openphone.js';
 import { messageProcessor } from './services/messageProcessor.js';
 import { OpenAIService } from './services/openai.js';
-
+import webhookController from './controllers/webhookController.js';
+import messageService from './services/messageService.js';
 const app = express();
 const PORT = process.env.PORT || 10000;
 
