@@ -190,28 +190,6 @@ const Calendar: React.FC = () => {
         </div>
       </div>
 
-      {/* Calendar Status */}
-      <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-        <div className="flex">
-          <div className="flex-shrink-0">
-            <CalendarIcon className="h-5 w-5 text-blue-400" />
-          </div>
-          <div className="ml-3">
-            <h3 className="text-sm font-medium text-blue-800">
-              Calendar System Active
-            </h3>
-            <div className="mt-2 text-sm text-blue-700">
-              <p>
-                Appointments are managed locally with conflict detection and status tracking.
-                {todaysEvents.length > 0 && (
-                  <span className="font-medium"> {todaysEvents.length} appointment{todaysEvents.length !== 1 ? 's' : ''} today.</span>
-                )}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Today's Summary */}
       {todaysEvents.length > 0 && (
         <div className="bg-green-50 border border-green-200 rounded-md p-4">

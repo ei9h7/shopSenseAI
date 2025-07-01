@@ -128,27 +128,6 @@ const Quotes: React.FC = () => {
         </button>
       </div>
 
-      {/* Auto Tech Sheet Generation Notice */}
-      {canGenerateTechSheets() && (
-        <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <ClipboardList className="h-5 w-5 text-blue-400" />
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-blue-800">
-                Auto Tech Sheet Generation Enabled
-              </h3>
-              <div className="mt-2 text-sm text-blue-700">
-                <p>
-                  When quotes are accepted, tech sheets will be automatically generated to help with the repair work.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Tech Sheet Generation Loading */}
       {isGenerating && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">

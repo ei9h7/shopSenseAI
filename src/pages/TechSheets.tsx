@@ -140,48 +140,6 @@ Built with Bolt.new
         </button>
       </div>
 
-      {/* AI Status Notice */}
-      {!hasAIGeneration() && (
-        <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <FileText className="h-5 w-5 text-blue-400" />
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-blue-800">
-                Basic Tech Sheet Generation Available
-              </h3>
-              <div className="mt-2 text-sm text-blue-700">
-                <p>
-                  Tech sheets will be created using professional templates. 
-                  Configure OpenAI API key in Settings for AI-powered generation with detailed instructions.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {hasAIGeneration() && (
-        <div className="bg-green-50 border border-green-200 rounded-md p-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <Bot className="h-5 w-5 text-green-400" />
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-green-800">
-                AI-Powered Tech Sheet Generation Enabled
-              </h3>
-              <div className="mt-2 text-sm text-green-700">
-                <p>
-                  Tech sheets will be generated using AI with detailed, job-specific instructions and professional guidance.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Generate Form Modal */}
       {showGenerateForm && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
