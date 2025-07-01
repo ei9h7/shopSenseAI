@@ -77,7 +77,7 @@ const Messages: React.FC = () => {
           </div>
           <div className="ml-3">
             <h3 className="text-sm font-medium text-blue-800">
-              📱 Demo Instructions for Judges
+              📱 Testing Messaging Service
             </h3>
             <div className="mt-2 text-sm text-blue-700">
               <p className="mb-2">
