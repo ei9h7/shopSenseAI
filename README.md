@@ -1,3 +1,8 @@
+## This repository has been deprecated, and replaced by two seperate repositories for front end and backend code bases:
+- **Backend Repo**: https://github.com/ei9h7/ShopSenseAI-backend
+- **Frontend Repo**: https://github.com/ei9h7/ShopSenseAI-frontend
+
+
 # ShopSenseAI - AI Service Advisor
 
 > **Built with [Bolt.new](https://bolt.new)** ⚡
